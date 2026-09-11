@@ -1,0 +1,186 @@
+<div id="tq-evidence-response">
+  <h1>Tq response of Bayes evidence and information</h1>
+  <div class="tqrv-key text-small" aria-label="Chart key">
+    <span><i class="tqrv-line" aria-hidden="true"></i>Response curve</span>
+    <span><i class="tqrv-dot" aria-hidden="true"></i>Maximum on searched range</span>
+    <span><i class="tqrv-reference" aria-hidden="true"></i>Default multiplier = 1</span>
+  </div>
+  <div id="tqrv-sections"></div>
+  <div class="tooltip" role="tooltip" hidden></div>
+  <script type="application/json" id="tqrv-data">__TQRV_DATA__</script>
+</div>
+
+<style>
+  #tq-evidence-response { width: 100%; color: var(--foreground); }
+  #tq-evidence-response h1 { margin: 0 0 10px; }
+  #tq-evidence-response .tqrv-key {
+    display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center;
+    margin-bottom: 18px; color: var(--muted-foreground);
+  }
+  #tq-evidence-response .tqrv-key span { display: inline-flex; align-items: center; gap: 7px; }
+  #tq-evidence-response .tqrv-line { width: 24px; height: 2px; background: var(--viz-series-1); }
+  #tq-evidence-response .tqrv-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--viz-series-2); }
+  #tq-evidence-response .tqrv-reference { width: 1px; height: 15px; border-left: 1px dashed var(--muted-foreground); }
+  #tq-evidence-response .tqrv-stage { margin-top: 22px; }
+  #tq-evidence-response .tqrv-stage > h2 { margin-bottom: 4px; }
+  #tq-evidence-response .tqrv-stage-note { color: var(--muted-foreground); margin: 0 0 14px; }
+  #tq-evidence-response .tqrv-stream { margin: 0 0 24px; }
+  #tq-evidence-response .tqrv-stream h3 { margin: 0 0 6px; font-weight: 500; }
+  #tq-evidence-response .tqrv-status { color: var(--muted-foreground); font-weight: 400; }
+  #tq-evidence-response .tqrv-plots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  #tq-evidence-response .tqrv-chart { min-width: 0; }
+  #tq-evidence-response .tqrv-chart svg { width: 100%; display: block; overflow: visible; }
+  #tq-evidence-response .tqrv-chart text { fill: var(--foreground); font-size: 12px; font-weight: 400; }
+  #tq-evidence-response .tqrv-chart .muted { fill: var(--muted-foreground); }
+  #tq-evidence-response .tqrv-chart .axis path,
+  #tq-evidence-response .tqrv-chart .axis line { stroke: var(--border); }
+  #tq-evidence-response .tqrv-chart .grid line { stroke: var(--border); stroke-opacity: 0.55; }
+  #tq-evidence-response .tqrv-chart .grid path { display: none; }
+  #tq-evidence-response .tqrv-chart rect[data-chart-frame] { fill: transparent; stroke: var(--border); }
+  #tq-evidence-response .tqrv-chart .curve { fill: none; stroke: var(--viz-series-1); stroke-width: 2; }
+  #tq-evidence-response .tqrv-chart .reference { stroke: var(--muted-foreground); stroke-width: 1; stroke-dasharray: 4 4; }
+  #tq-evidence-response .tqrv-chart .maximum { fill: var(--viz-series-2); }
+  #tq-evidence-response .tqrv-chart .hover-guide { stroke: var(--foreground); stroke-width: 1; stroke-opacity: 0.55; }
+  #tq-evidence-response .tqrv-chart .hover-marker { fill: var(--background); stroke: var(--viz-series-1); stroke-width: 2; }
+  #tq-evidence-response .tooltip {
+    position: absolute; pointer-events: none; z-index: 10; max-width: 300px;
+    padding: 8px 10px; background: var(--popover); color: var(--popover-foreground);
+    border: 1px solid var(--border); border-radius: 6px;
+  }
+  @media (max-width: 620px) {
+    #tq-evidence-response .tqrv-plots { grid-template-columns: 1fr; gap: 12px; }
+    #tq-evidence-response .tqrv-stream { margin-bottom: 30px; }
+  }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script>
+(() => {
+  const root = document.getElementById("tq-evidence-response");
+  const data = JSON.parse(document.getElementById("tqrv-data").textContent);
+  const sections = root.querySelector("#tqrv-sections");
+  const tooltip = root.querySelector(".tooltip");
+  const metricDefinitions = [
+    {
+      key: "bf",
+      title: "Tq vs geometric mean Bayes factor",
+      yLabel: "Geometric mean effective BF",
+      format: d3.format(".4~g")
+    },
+    {
+      key: "info",
+      title: "Tq vs realized information",
+      yLabel: "Total KL information (bits)",
+      format: d3.format(".4~g")
+    }
+  ];
+  const charts = [];
+
+  function addStage(stage, title, note) {
+    const stageRows = data.filter(d => d.stage === stage);
+    const stageElement = document.createElement("section");
+    stageElement.className = "tqrv-stage";
+    stageElement.innerHTML = `<h2>${title}</h2><p class="tqrv-stage-note text-small">${note}</p>`;
+    sections.appendChild(stageElement);
+
+    d3.groups(stageRows, d => d.stream_id).forEach(([, values]) => {
+      values.sort((a, b) => a.multiplier - b.multiplier);
+      const stream = document.createElement("section");
+      stream.className = "tqrv-stream";
+      const status = values[0].enabled ? "default-enabled" : "optional";
+      stream.innerHTML = `<h3>${values[0].label} <span class="tqrv-status text-small">· ${status} · weight ${values[0].weight}</span></h3><div class="tqrv-plots"></div>`;
+      stageElement.appendChild(stream);
+      const plotRow = stream.querySelector(".tqrv-plots");
+      metricDefinitions.forEach(metric => {
+        const container = document.createElement("div");
+        container.className = "tqrv-chart";
+        plotRow.appendChild(container);
+        charts.push({ container, values, metric });
+      });
+    });
+  }
+
+  addStage("node", "Node evidence streams", "Tq multipliers use each stream’s GUI calibration bounds.");
+  addStage("edge", "Edge evidence streams", "STRING and STITCH use a reference-score multiplier (Ref ×), not a Gaussian Tq.");
+
+  function drawChart(chart) {
+    const { container, values, metric } = chart;
+    container.replaceChildren();
+    const width = Math.max(300, container.getBoundingClientRect().width || 300);
+    const height = 225;
+    const margin = { top: 32, right: 18, bottom: 48, left: width < 380 ? 70 : 78 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const xExtent = d3.extent(values, d => d.multiplier);
+    const rawYExtent = d3.extent(values, d => d[metric.key]);
+    const ySpan = rawYExtent[1] - rawYExtent[0];
+    const yPad = ySpan > 0 ? ySpan * 0.08 : Math.max(Math.abs(rawYExtent[0]) * 0.08, 0.01);
+    const yDomain = [Math.max(0, rawYExtent[0] - yPad), rawYExtent[1] + yPad];
+    const x = d3.scaleLog().domain(xExtent).range([0, innerWidth]);
+    const y = d3.scaleLinear().domain(yDomain).nice().range([innerHeight, 0]);
+    const svg = d3.select(container).append("svg")
+      .attr("viewBox", `0 0 ${width} ${height}`)
+      .attr("role", "img")
+      .attr("aria-label", `${values[0].label}: ${metric.title}`);
+    svg.append("title").text(`${values[0].label}: ${metric.title}`);
+    svg.append("desc").text(`Response across ${values.length} ${values[0].control} multiplier values. The maximum on the searched range is marked.`);
+    svg.append("text").attr("x", margin.left).attr("y", 17).attr("font-weight", 500).text(metric.title);
+    const plot = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    plot.append("rect").attr("data-chart-frame", "").attr("width", innerWidth).attr("height", innerHeight);
+    plot.append("g").attr("class", "grid").call(d3.axisLeft(y).ticks(4).tickSize(-innerWidth).tickFormat(""));
+    const tickCandidates = Array.from(new Set([xExtent[0], 1, xExtent[1]])).filter(v => v >= xExtent[0] && v <= xExtent[1]);
+    plot.append("g").attr("class", "axis").attr("transform", `translate(0,${innerHeight})`)
+      .call(d3.axisBottom(x).tickValues(tickCandidates).tickFormat(d3.format("~g")));
+    plot.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(4).tickFormat(metric.format));
+    svg.append("text").attr("class", "axis-title").attr("data-axis", "x")
+      .attr("x", margin.left + innerWidth / 2).attr("y", height - 7).attr("text-anchor", "middle")
+      .text(`${values[0].control} multiplier`);
+    svg.append("text").attr("class", "axis-title").attr("data-axis", "y")
+      .attr("transform", `translate(16,${margin.top + innerHeight / 2}) rotate(-90)`).attr("text-anchor", "middle")
+      .text(metric.yLabel);
+    if (xExtent[0] <= 1 && xExtent[1] >= 1) {
+      plot.append("line").attr("class", "reference").attr("x1", x(1)).attr("x2", x(1)).attr("y1", 0).attr("y2", innerHeight);
+    }
+    const line = d3.line().x(d => x(d.multiplier)).y(d => y(d[metric.key]));
+    plot.append("path").datum(values).attr("class", "curve").attr("d", line);
+    const maximum = values.reduce((best, current) => current[metric.key] > best[metric.key] ? current : best, values[0]);
+    plot.append("circle").attr("class", "maximum").attr("cx", x(maximum.multiplier)).attr("cy", y(maximum[metric.key])).attr("r", 4.5);
+    const maxAnchor = x(maximum.multiplier) < innerWidth * 0.55 ? "start" : "end";
+    const maxX = x(maximum.multiplier) + (maxAnchor === "start" ? 7 : -7);
+    const maxY = Math.max(12, y(maximum[metric.key]) - 7);
+    plot.append("text").attr("x", maxX).attr("y", maxY).attr("text-anchor", maxAnchor)
+      .text(`max ${metric.format(maximum[metric.key])} at ${d3.format(".3~g")(maximum.multiplier)}×`);
+
+    const guide = plot.append("line").attr("class", "hover-guide").attr("y1", 0).attr("y2", innerHeight).style("display", "none");
+    const marker = plot.append("circle").attr("class", "hover-marker").attr("r", 4).style("display", "none");
+    const bisector = d3.bisector(d => d.multiplier).center;
+    plot.append("rect")
+      .attr("data-chart-hit", "").attr("data-chart-hover-overlay", "cross-series")
+      .attr("width", innerWidth).attr("height", innerHeight).attr("fill", "transparent")
+      .on("pointermove", event => {
+        const [px] = d3.pointer(event);
+        const exactMultiplier = x.invert(px);
+        const index = bisector(values, exactMultiplier);
+        const point = values[Math.max(0, Math.min(values.length - 1, index))];
+        const gx = x(exactMultiplier);
+        guide.attr("x1", gx).attr("x2", gx).style("display", null);
+        marker.attr("cx", x(point.multiplier)).attr("cy", y(point[metric.key])).style("display", null);
+        tooltip.hidden = false;
+        tooltip.innerHTML = `<strong>${values[0].label}</strong><br>${values[0].control} ${d3.format(".4~g")(point.multiplier)}<br>${metric.yLabel}: ${metric.format(point[metric.key])}`;
+        const rootRect = root.getBoundingClientRect();
+        tooltip.style.left = `${event.clientX - rootRect.left + 12}px`;
+        tooltip.style.top = `${event.clientY - rootRect.top + 12}px`;
+      })
+      .on("pointerleave", () => {
+        guide.style("display", "none");
+        marker.style("display", "none");
+        tooltip.hidden = true;
+      });
+  }
+
+  const redraw = () => charts.forEach(drawChart);
+  redraw();
+  const observer = new ResizeObserver(redraw);
+  observer.observe(root);
+})();
+</script>

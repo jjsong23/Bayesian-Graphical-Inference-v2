@@ -1,0 +1,10 @@
+numpy
+pandas
+scipy
+openpyxl
+Pillow
+networkx
+obonet
+
+# Optional: only needed to launch the archived original KinasePredictor GUI.
+# PyQt5

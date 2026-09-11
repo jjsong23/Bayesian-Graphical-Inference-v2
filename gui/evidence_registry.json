@@ -1,0 +1,621 @@
+{
+  "schema_version": 1,
+  "node_streams": [
+    {
+      "id": "protein_abundance",
+      "label": "mpkCCD protein abundance",
+      "description": "Back-transformed mpkCCD protein abundance with the current complement-of-minimum factor.",
+      "column": "protein_factor",
+      "neutral_value": 0.5,
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "negative_evidence": {
+        "observed_column": "protein_observed",
+        "eligibility": "all_candidates",
+        "absence_definition": "No finite positive protein-abundance measurement mapped to the candidate."
+      },
+      "normalization": {
+        "handler": "protein_abundance",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "reference": "q75 = 1.263034e9 linear abundance",
+        "help": "Multiplies the empirical q75 threshold calculated from all finite back-transformed protein abundances."
+      }
+    },
+    {
+      "id": "pc_transcript",
+      "label": "Principal-cell RNA",
+      "description": "Positive principal-cell median TPM values; zero measurements remain neutral/missing.",
+      "column": "pc_transcript_factor",
+      "neutral_value": 0.5,
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "negative_evidence": {
+        "observed_column": "pc_transcript_observed",
+        "eligibility": "all_candidates",
+        "absence_definition": "No positive principal-cell TPM measurement; measured zeros count as nondetections."
+      },
+      "normalization": {
+        "handler": "pc_transcript",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "reference": "q75 = 7.1225 TPM",
+        "help": "Multiplies the empirical q75 threshold calculated from positive principal-cell TPM values; zero measurements remain neutral."
+      }
+    },
+    {
+      "id": "kinase_activity",
+      "label": "PKA-KO kinase activity",
+      "description": "Absolute-LFC kinase-profile evidence from the top-ten KinasePredictor analysis.",
+      "column": "kinase_relative_multiplier",
+      "neutral_value": 1.0,
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "dependence_group": "pka_ko_phosphoproteomics",
+      "negative_evidence": {
+        "observed_column": "kinase_evidence_observed",
+        "eligibility": "ontology_class",
+        "ontology_class": "kinase",
+        "absence_definition": "No kinase-level KinasePredictor activity statistic for an ontology-annotated kinase; non-kinases are out of scope."
+      },
+      "normalization": {
+        "handler": "kinase_activity",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "calibration_preferred_multiplier": 0.1,
+        "calibration_bounds": [0.05, 1.0],
+        "reference": "q75 = 0.17 absolute LFC",
+        "help": "Multiplies the q75 threshold from all kinase-level absolute median phosphosite LFC values."
+      }
+    },
+    {
+      "id": "phosphoprotein_response",
+      "label": "PKA-KO phosphoprotein response",
+      "description": "Strongest site-level response: at least one positively scoring phosphosite makes the protein a hit.",
+      "column": "phosphoprotein_relative_multiplier",
+      "neutral_value": 1.0,
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "dependence_group": "pka_ko_phosphoproteomics",
+      "negative_evidence": {
+        "observed_column": "phosphoprotein_evidence_observed",
+        "eligibility": "all_candidates",
+        "absence_definition": "No detected phosphosite mapped to the candidate in the PKA-KO phosphoproteomic dataset."
+      },
+      "normalization": {
+        "handler": "phosphoprotein_response",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "calibration_preferred_multiplier": 0.1,
+        "calibration_bounds": [0.05, 1.0],
+        "reference": "single all-phosphosite q75; no site-count adjustment",
+        "help": "Multiplies the same site-level q75 for every observed phosphosite. The protein inherits its strongest site's factor; additional sites do not raise the threshold or accumulate extra evidence."
+      }
+    },
+    {
+      "id": "pka_ca_ko_phosphoprotein_response",
+      "label": "PKA-Cα KO phosphoprotein response",
+      "description": "Strongest site-pattern response after selective Prkaca knockout; one positively scoring site is sufficient.",
+      "factor_file": "data/node_selection/pka_subunit_ko/processed/pka_subunit_ko_node_factors.tsv.gz",
+      "column": "pka_ca_ko_phosphoprotein_factor",
+      "raw_value_column": "pka_ca_ko_max_absolute_lfc",
+      "observed_column": "pka_ca_ko_observed",
+      "tq_column": "pka_ca_ko_site_tq",
+      "neutral_value": 1.0,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "pka_subunit_ko_phosphoproteomics",
+      "negative_evidence": {
+        "observed_column": "pka_ca_ko_observed",
+        "eligibility": "all_candidates",
+        "absence_definition": "No phosphosite pattern from the PKA-Cα-null versus matched-intact comparison mapped to the candidate."
+      },
+      "normalization": {
+        "handler": "site_level_phosphoprotein_response",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "calibration_preferred_multiplier": 0.1,
+        "calibration_bounds": [0.05, 1.0],
+        "reference": "single source-site q75 = 0.226039 absolute LFC; no site-count adjustment",
+        "help": "Multiplies the same PKA-Cα-KO site-level q75 for every site pattern. Each protein inherits its strongest site's factor; proteins without detected sites remain neutral."
+      }
+    },
+    {
+      "id": "pka_cb_ko_phosphoprotein_response",
+      "label": "PKA-Cβ KO phosphoprotein response",
+      "description": "Strongest site-pattern response after selective Prkacb knockout; one positively scoring site is sufficient.",
+      "factor_file": "data/node_selection/pka_subunit_ko/processed/pka_subunit_ko_node_factors.tsv.gz",
+      "column": "pka_cb_ko_phosphoprotein_factor",
+      "raw_value_column": "pka_cb_ko_max_absolute_lfc",
+      "observed_column": "pka_cb_ko_observed",
+      "tq_column": "pka_cb_ko_site_tq",
+      "neutral_value": 1.0,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "pka_subunit_ko_phosphoproteomics",
+      "negative_evidence": {
+        "observed_column": "pka_cb_ko_observed",
+        "eligibility": "all_candidates",
+        "absence_definition": "No phosphosite pattern from the PKA-Cβ-null versus matched-intact comparison mapped to the candidate."
+      },
+      "normalization": {
+        "handler": "site_level_phosphoprotein_response",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "calibration_preferred_multiplier": 0.1,
+        "calibration_bounds": [0.05, 1.0],
+        "reference": "single source-site q75 = 0.183712 absolute LFC; no site-count adjustment",
+        "help": "Multiplies the same PKA-Cβ-KO site-level q75 for every site pattern. Each protein inherits its strongest site's factor; proteins without detected sites remain neutral."
+      }
+    },
+    {
+      "id": "collecting_duct_proteome_ccd",
+      "label": "Collecting duct proteome - CCD",
+      "description": "Rat CCD protein abundance mapped to mouse genes with audited Ensembl orthology.",
+      "factor_file": "data/node_selection/collecting_duct/processed/collecting_duct_node_factors.tsv.gz",
+      "column": "cd_proteome_ccd_factor",
+      "raw_value_column": "cd_proteome_ccd_value",
+      "observed_column": "cd_proteome_ccd_observed",
+      "tq_column": "cd_proteome_ccd_tq",
+      "neutral_value": 0.5,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "ktea_collecting_duct_proteome",
+      "normalization": {
+        "handler": "collecting_duct_abundance",
+        "control_label": "Tq x",
+        "default_multiplier": 1.0,
+        "reference": "positive-value q75 = 66565.7131 abundance units",
+        "help": "Multiplies the CCD-specific q75 derived from all positive rat-proteome measurements; zero/nondetected values stay neutral."
+      }
+    },
+    {
+      "id": "collecting_duct_proteome_omcd",
+      "label": "Collecting duct proteome - OMCD",
+      "description": "Rat OMCD protein abundance mapped to mouse genes with audited Ensembl orthology.",
+      "factor_file": "data/node_selection/collecting_duct/processed/collecting_duct_node_factors.tsv.gz",
+      "column": "cd_proteome_omcd_factor",
+      "raw_value_column": "cd_proteome_omcd_value",
+      "observed_column": "cd_proteome_omcd_observed",
+      "tq_column": "cd_proteome_omcd_tq",
+      "neutral_value": 0.5,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "ktea_collecting_duct_proteome",
+      "normalization": {
+        "handler": "collecting_duct_abundance",
+        "control_label": "Tq x",
+        "default_multiplier": 1.0,
+        "reference": "positive-value q75 = 70816.4444 abundance units",
+        "help": "Multiplies the OMCD-specific q75 derived from all positive rat-proteome measurements; zero/nondetected values stay neutral."
+      }
+    },
+    {
+      "id": "collecting_duct_proteome_imcd",
+      "label": "Collecting duct proteome - IMCD",
+      "description": "Rat IMCD protein abundance mapped to mouse genes with audited Ensembl orthology.",
+      "factor_file": "data/node_selection/collecting_duct/processed/collecting_duct_node_factors.tsv.gz",
+      "column": "cd_proteome_imcd_factor",
+      "raw_value_column": "cd_proteome_imcd_value",
+      "observed_column": "cd_proteome_imcd_observed",
+      "tq_column": "cd_proteome_imcd_tq",
+      "neutral_value": 0.5,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "ktea_collecting_duct_proteome",
+      "normalization": {
+        "handler": "collecting_duct_abundance",
+        "control_label": "Tq x",
+        "default_multiplier": 1.0,
+        "reference": "positive-value q75 = 65193.9136 abundance units",
+        "help": "Multiplies the IMCD-specific q75 derived from all positive rat-proteome measurements; zero/nondetected values stay neutral."
+      }
+    },
+    {
+      "id": "collecting_duct_rna_ccd",
+      "label": "Collecting duct RNA - CCD",
+      "description": "Mouse CCD segment RNA abundance from the renal-tubule RNA-seq table.",
+      "factor_file": "data/node_selection/collecting_duct/processed/collecting_duct_node_factors.tsv.gz",
+      "column": "cd_rna_ccd_factor",
+      "raw_value_column": "cd_rna_ccd_value",
+      "observed_column": "cd_rna_ccd_observed",
+      "tq_column": "cd_rna_ccd_tq",
+      "neutral_value": 0.5,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "mouse_renal_tubule_rna_seq",
+      "normalization": {
+        "handler": "collecting_duct_abundance",
+        "control_label": "Tq x",
+        "default_multiplier": 1.0,
+        "reference": "positive-value q75 = 22.9 RNA abundance units",
+        "help": "Multiplies the CCD-specific q75 derived from all positive RNA measurements; zero/nondetected values stay neutral."
+      }
+    },
+    {
+      "id": "collecting_duct_rna_omcd",
+      "label": "Collecting duct RNA - OMCD",
+      "description": "Mouse OMCD segment RNA abundance from the renal-tubule RNA-seq table.",
+      "factor_file": "data/node_selection/collecting_duct/processed/collecting_duct_node_factors.tsv.gz",
+      "column": "cd_rna_omcd_factor",
+      "raw_value_column": "cd_rna_omcd_value",
+      "observed_column": "cd_rna_omcd_observed",
+      "tq_column": "cd_rna_omcd_tq",
+      "neutral_value": 0.5,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "mouse_renal_tubule_rna_seq",
+      "normalization": {
+        "handler": "collecting_duct_abundance",
+        "control_label": "Tq x",
+        "default_multiplier": 1.0,
+        "reference": "positive-value q75 = 9.2 RNA abundance units",
+        "help": "Multiplies the OMCD-specific q75 derived from all positive RNA measurements; zero/nondetected values stay neutral."
+      }
+    },
+    {
+      "id": "collecting_duct_rna_imcd",
+      "label": "Collecting duct RNA - IMCD",
+      "description": "Mouse IMCD segment RNA abundance from the renal-tubule RNA-seq table.",
+      "factor_file": "data/node_selection/collecting_duct/processed/collecting_duct_node_factors.tsv.gz",
+      "column": "cd_rna_imcd_factor",
+      "raw_value_column": "cd_rna_imcd_value",
+      "observed_column": "cd_rna_imcd_observed",
+      "tq_column": "cd_rna_imcd_tq",
+      "neutral_value": 0.5,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "mouse_renal_tubule_rna_seq",
+      "normalization": {
+        "handler": "collecting_duct_abundance",
+        "control_label": "Tq x",
+        "default_multiplier": 1.0,
+        "reference": "positive-value q75 = 11.7 RNA abundance units",
+        "help": "Multiplies the IMCD-specific q75 derived from all positive RNA measurements; zero/nondetected values stay neutral."
+      }
+    }
+  ],
+  "edge_streams": [
+    {
+      "id": "mpkccd_localization",
+      "label": "mpkCCD localization",
+      "description": "Differential-fraction localization similarity.",
+      "factor_file": "results/backend_bayes_factor_catalogs/edge_factors_891/mpkccd_localization_bf_gt1.tsv.gz",
+      "factor_column": "bayes_factor",
+      "target_factor_column": "mpkccd_bayes_factor",
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "negative_evidence": {
+        "eligibility": "both_mpkccd_profiles",
+        "absence_definition": "Both proteins have valid mpkCCD fractionation profiles, but their pair has no non-neutral localization factor."
+      },
+      "normalization": {
+        "handler": "mpkccd_localization",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "reference": "per-node q75 dot-product thresholds",
+        "help": "Multiplies every node-specific q75 localization threshold before reciprocal symmetrization."
+      }
+    },
+    {
+      "id": "kinase_predictor",
+      "label": "KinasePredictor",
+      "description": "Observed/curated phosphosite kinase-to-protein predictions.",
+      "factor_file": "results/backend_bayes_factor_catalogs/edge_factors_891/kinase_predictor_bf_gt1.tsv.gz",
+      "factor_column": "bayes_factor",
+      "target_factor_column": "kinasepredictor_bayes_factor",
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "negative_evidence": {
+        "eligibility": "kinase_to_scorable_phosphoprotein",
+        "absence_definition": "One endpoint is an ontology-annotated kinase and the other has at least one observed, scorable phosphosite, but no non-neutral top-ten motif prediction links the pair."
+      },
+      "normalization": {
+        "handler": "kinase_predictor",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "calibration_preferred_multiplier": 0.1,
+        "calibration_bounds": [0.05, 1.0],
+        "reference": "per-phosphosite q75 motif-score thresholds",
+        "help": "Multiplies each observed phosphosite's motif-score threshold before top-ten kinase hits are combined."
+      }
+    },
+    {
+      "id": "string_v12",
+      "label": "STRING v12",
+      "description": "Mouse functional associations from STRING v12.",
+      "factor_file": "results/backend_bayes_factor_catalogs/edge_factors_891/string_v12_bf_gt1.tsv.gz",
+      "factor_column": "bayes_factor",
+      "target_factor_column": "string_bayes_factor",
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "negative_evidence": {
+        "eligibility": "both_string_mapped_proteins",
+        "absence_definition": "Both protein nodes have valid STRING mouse identifiers, but the pair has no non-neutral STRING association record."
+      },
+      "normalization": {
+        "handler": "string_v12",
+        "control_label": "Ref ×",
+        "default_multiplier": 1.0,
+        "reference": "STRING prior/reference score = 0.041",
+        "help": "STRING uses a reference odds score rather than the Gaussian Tq kernel. This multiplier changes that reference score."
+      }
+    },
+    {
+      "id": "hpa_primary",
+      "label": "HPA primary localization",
+      "description": "Enhanced, Supported, and Approved HPA localization calls.",
+      "factor_file": "results/backend_bayes_factor_catalogs/edge_factors_891/hpa_primary_bf_gt1.tsv.gz",
+      "factor_column": "bayes_factor",
+      "target_factor_column": "hpa_bayes_factor",
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "exclusive_group": "hpa_localization",
+      "negative_evidence": {
+        "eligibility": "both_hpa_primary_profiles",
+        "absence_definition": "Both proteins have valid HPA primary localization profiles, but their pair has no non-neutral HPA localization factor."
+      },
+      "normalization": {
+        "handler": "hpa_primary",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "reference": "per-node q75 cosine-similarity thresholds",
+        "help": "Multiplies HPA primary-profile thresholds before reciprocal symmetrization."
+      }
+    },
+    {
+      "id": "hpa_high_confidence",
+      "label": "HPA high confidence",
+      "description": "Enhanced and Supported HPA calls only; sensitivity alternative to HPA primary.",
+      "factor_file": "results/backend_bayes_factor_catalogs/edge_factors_891/hpa_high_confidence_bf_gt1.tsv.gz",
+      "factor_column": "bayes_factor",
+      "target_factor_column": null,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "exclusive_group": "hpa_localization",
+      "negative_evidence": {
+        "eligibility": "both_hpa_high_profiles",
+        "absence_definition": "Both proteins have valid HPA high-confidence localization profiles, but their pair has no non-neutral HPA localization factor."
+      },
+      "normalization": {
+        "handler": "hpa_high_confidence",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "reference": "per-node q75 cosine-similarity thresholds",
+        "help": "Multiplies HPA Enhanced/Supported-profile thresholds before reciprocal symmetrization."
+      }
+    },
+    {
+      "id": "omnipath_core",
+      "label": "OmniPath core",
+      "description": "Core mouse signaling interactions collapsed to unsigned, undirected pairs.",
+      "factor_file": "results/backend_bayes_factor_catalogs/edge_factors_891/omnipath_core_bf_gt1.tsv.gz",
+      "factor_column": "omnipath_bayes_factor",
+      "target_factor_column": "omnipath_bayes_factor",
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "negative_evidence": {
+        "eligibility": "all_protein_pairs",
+        "absence_definition": "Both endpoints are proteins in the selected graph, but OmniPath contains no non-neutral core interaction for the pair. This is an optional database-absence assumption, not proof of no interaction."
+      },
+      "normalization": {
+        "handler": "omnipath_core",
+        "control_label": "Tq ×",
+        "default_multiplier": 1.0,
+        "reference": "q75 curation effort = 6",
+        "help": "Multiplies the q75 curation-effort threshold from all mouse OmniPath pairs."
+      }
+    },
+    {
+      "id": "stitch_secondary_messenger",
+      "label": "STITCH v5 messenger–protein",
+      "description": "Mouse protein–chemical associations for the curated secondary-messenger nodes.",
+      "factor_file": "results/backend_bayes_factor_catalogs/edge_factors_891/stitch_secondary_messenger_bf_gt1.tsv.gz",
+      "factor_column": "stitch_bayes_factor",
+      "target_factor_column": null,
+      "default_enabled": true,
+      "default_weight": 1.0,
+      "negative_evidence": {
+        "eligibility": "mapped_messenger_protein_pairs",
+        "absence_definition": "One endpoint is a curated messenger represented in STITCH and the other is a STRING-mapped protein, but STITCH contains no non-neutral association for the pair."
+      },
+      "normalization": {
+        "handler": "stitch_secondary_messenger",
+        "control_label": "Ref ×",
+        "default_multiplier": 1.0,
+        "reference": "STITCH reporting-floor score = 0.150",
+        "help": "STITCH uses combined-score odds relative to its 0.150 reporting floor. This multiplier changes that reference score; missing records remain neutral."
+      }
+    },
+    {
+      "id": "scaffold_triadic_closure",
+      "label": "Scaffold-mediated closure",
+      "description": "Fixed one-pass evidence for protein pairs that each have a strong edge to the same adaptor/scaffold.",
+      "derived": true,
+      "default_enabled": false,
+      "default_weight": 1.0,
+      "dependence_group": "derived_from_selected_edge_graph",
+      "parameters": [
+        {
+          "id": "anchor_probability_cutoff",
+          "label": "Anchor >",
+          "default": 0.9,
+          "minimum": 0.5,
+          "maximum": 0.999,
+          "step": 0.01,
+          "help": "A protein-scaffold edge must exceed this pre-closure probability before it can support closure."
+        },
+        {
+          "id": "closure_likelihood",
+          "label": "Support L",
+          "default": 0.9,
+          "minimum": 0.5,
+          "maximum": 0.999,
+          "step": 0.01,
+          "help": "Likelihood assigned to every qualifying pair. Relative to the neutral likelihood 0.5, the default 0.90 gives BF = 1.8."
+        }
+      ],
+      "normalization": {
+        "handler": "scaffold_triadic_closure",
+        "user_control": false,
+        "control_label": "",
+        "default_multiplier": 1.0,
+        "reference": "Binary shared-scaffold rule; no empirical Tq or scaffold-degree penalty",
+        "help": "Closure uses the Anchor and Support L controls and is calculated once without recursive feedback."
+      }
+    }
+  ],
+  "path_ontology_classes": [
+    {
+      "id": "receptor",
+      "label": "Receptor",
+      "roots": ["GO:0060089", "GO:0038023"],
+      "description": "Proteins annotated under molecular transducer activity or signaling receptor activity.",
+      "default_enabled": true
+    },
+    {
+      "id": "receptor_regulator",
+      "label": "Receptor regulator",
+      "roots": ["GO:0030545"],
+      "description": "Regulators of receptor activity.",
+      "default_enabled": true
+    },
+    {
+      "id": "ligand",
+      "label": "Ligand",
+      "roots": ["GO:0048018", "GO:0005102"],
+      "description": "Receptor ligands and signaling-receptor binding proteins.",
+      "default_enabled": true
+    },
+    {
+      "id": "kinase",
+      "label": "Kinase",
+      "roots": ["GO:0016301"],
+      "description": "Kinase activity and its descendants.",
+      "default_enabled": true
+    },
+    {
+      "id": "phosphatase",
+      "label": "Phosphatase",
+      "roots": ["GO:0016791"],
+      "description": "Phosphatase activity and its descendants.",
+      "default_enabled": true
+    },
+    {
+      "id": "cyclase",
+      "label": "Cyclase",
+      "roots": ["GO:0004016", "GO:0004383"],
+      "description": "Adenylate and guanylate cyclase activities.",
+      "default_enabled": true
+    },
+    {
+      "id": "phosphodiesterase",
+      "label": "Phosphodiesterase",
+      "roots": ["GO:0004112"],
+      "description": "Cyclic-nucleotide phosphodiesterase activity.",
+      "default_enabled": true
+    },
+    {
+      "id": "phospholipase",
+      "label": "Phospholipase",
+      "roots": ["GO:0120548"],
+      "description": "Phosphatidylinositol phospholipase C activity and its descendants.",
+      "default_enabled": true
+    },
+    {
+      "id": "nos",
+      "label": "Nitric-oxide synthase",
+      "roots": ["GO:0004517"],
+      "description": "Nitric-oxide synthase activity.",
+      "default_enabled": true
+    },
+    {
+      "id": "gtpase",
+      "label": "GTPase",
+      "roots": ["GO:0003924"],
+      "description": "GTPase activity and its descendants.",
+      "default_enabled": true
+    },
+    {
+      "id": "gtpase_regulator",
+      "label": "GTPase regulator",
+      "roots": ["GO:0030695", "GO:0005085", "GO:0005096"],
+      "description": "GTPase regulatory, exchange-factor, and activating activities.",
+      "default_enabled": true
+    },
+    {
+      "id": "kinase_phosphatase_binding",
+      "label": "Kinase/phosphatase binding",
+      "roots": ["GO:0019900", "GO:0019902", "GO:0051018"],
+      "description": "Kinase, phosphatase, and protein kinase A binding activities.",
+      "default_enabled": true
+    },
+    {
+      "id": "second_messenger_binding",
+      "label": "Second-messenger binding",
+      "roots": ["GO:0030551", "GO:0005516"],
+      "description": "Cyclic-nucleotide and calmodulin binding activities.",
+      "default_enabled": true
+    },
+    {
+      "id": "signaling_process",
+      "label": "Signaling process",
+      "roots": ["GO:0023052", "GO:0007165", "GO:0035556", "GO:0007154"],
+      "description": "Broad signaling, signal transduction, intracellular signaling, and cell communication processes.",
+      "default_enabled": true
+    },
+    {
+      "id": "signaling_regulation",
+      "label": "Signaling regulation",
+      "roots": ["GO:0009966"],
+      "description": "Regulation of signal transduction.",
+      "default_enabled": true
+    },
+    {
+      "id": "second_messenger",
+      "label": "Second messenger",
+      "roots": [],
+      "description": "Curated non-protein second-messenger molecules; this class is not derived from a GO root.",
+      "default_enabled": true
+    },
+    {
+      "id": "adaptor_scaffold",
+      "label": "Adaptor/scaffold",
+      "roots": ["GO:0060090", "GO:0140378"],
+      "description": "Molecular adaptor and molecular scaffold activity. Disabled by default but available for sensitivity analyses.",
+      "default_enabled": false
+    }
+  ],
+  "defaults": {
+    "include_second_messengers": true,
+    "node_non_neutral_tolerance": 1e-12,
+    "node_prior_probability": 0.5,
+    "node_probability_cutoff": 0.5,
+    "penalize_unobserved_nodes": false,
+    "unobserved_node_bayes_factor": 0.5,
+    "continuous_negative_node_evidence": false,
+    "continuous_node_bayes_factor_floor": 1e-6,
+    "edge_prior_probability": 0.5,
+    "edge_probability_cutoff": 0.5,
+    "penalize_unsupported_edges": false,
+    "unsupported_edge_bayes_factor": 0.5,
+    "continuous_negative_edge_evidence": false,
+    "continuous_edge_bayes_factor_floor": 1e-6,
+    "start_node": "Prkaca",
+    "target_node": "Aqp2",
+    "top_k_paths": 25,
+    "maximum_hops": 6,
+    "path_minimum_edge_probability": 0.5,
+    "ontology_directionality_enabled": true,
+    "omnipath_directionality_enabled": true,
+    "signaling_intermediates_only": true,
+    "exclude_multirole_scaffolds": false,
+    "temporal_validation_enabled": false,
+    "temporal_prior_df": 4.0,
+    "temporal_alpha": 0.05,
+    "temporal_monte_carlo_draws": 2000,
+    "temporal_random_seed": 0,
+    "temporal_p_adjust_method": "within_gene_bonferroni",
+    "temporal_minimum_scored_nodes": 3
+  }
+}

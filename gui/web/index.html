@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Configure and run the graphical Bayesian signaling workflow." />
+    <title>Graphical Bayesian Inference</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Knepper Lab · Bayesian signaling</p>
+        <h1>Graphical Bayesian Inference</h1>
+      </div>
+      <div class="project-state"><span class="status-dot"></span><span>Local workbench</span></div>
+    </header>
+
+    <main class="workspace">
+      <form id="workflow-form" class="configuration" aria-label="Workflow configuration">
+        <section class="stage" aria-labelledby="calibration-title">
+          <div class="stage-heading path-heading">
+            <span class="stage-number">00</span>
+            <div>
+              <h2 id="calibration-title">Calibrate evidence</h2>
+              <p>Fit conservative weights and Tq scales to known-present controls.</p>
+            </div>
+            <label class="switch" title="Enable positive-control calibration">
+              <input id="calibration-enabled" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+          <div id="calibration-controls">
+            <div class="calibration-target-grid">
+              <label>
+                <span>Known nodes</span>
+                <textarea id="calibration-known-nodes" rows="5" placeholder="Prkaca&#10;Pde4d"></textarea>
+                <small>One modeled signaling gene symbol per line.</small>
+              </label>
+              <label>
+                <span>Known undirected edges</span>
+                <textarea id="calibration-known-edges" rows="5" placeholder="Prkaca,Aqp2&#10;Calm1,Pde4d"></textarea>
+                <small>One pair per line, separated by a comma or tab.</small>
+              </label>
+            </div>
+            <div class="parameter-grid">
+              <label>
+                <span>Regularization λ</span>
+                <input id="calibration-lambda" type="number" min="0" max="100" step="any" inputmode="decimal" />
+              </label>
+            </div>
+            <p class="scientific-note calibration-note">Known nodes and edges are positive controls, not a complete truth set: unknown hypotheses are not called absent. Node settings are fitted first; node selection is rerun with them; edge settings are then fitted independently on the resulting graph. One quadratic “rubber-band” penalty keeps weights near 1 and Tq/reference multipliers near the per-dataset <strong>Preferred Tq/Ref ×</strong> values shown on the evidence cards below. Tq/reference scales are optimized on a log scale. Preferred values must remain positive; derived scaffold closure has no Tq/reference scale and remains fixed.</p>
+          </div>
+        </section>
+
+        <section class="stage" aria-labelledby="node-title">
+          <div class="stage-heading">
+            <span class="stage-number">01</span>
+            <div>
+              <h2 id="node-title">Select nodes</h2>
+              <p>Choose evidence that establishes the signaling universe.</p>
+            </div>
+          </div>
+          <div id="node-streams" class="stream-list"></div>
+          <div class="parameter-grid compact-grid">
+            <label class="check-field span-two">
+              <input id="include-messengers" type="checkbox" />
+              <span>Include curated second messengers</span>
+            </label>
+            <label class="check-field span-two">
+              <input id="penalize-unobserved" type="checkbox" />
+              <span>Treat eligible nondetections as evidence against a node</span>
+            </label>
+            <label>
+              <span>Nondetection BF</span>
+              <input id="unobserved-bf" type="number" min="0.000001" max="1" step="any" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Continuous-mode BF floor</span>
+              <input id="continuous-node-bf-floor" type="number" min="0.000000000001" max="1" step="any" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Node prior</span>
+              <input id="node-prior" type="number" min="0.000001" max="0.999999" step="any" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Selection cutoff</span>
+              <input id="node-cutoff" type="number" min="0" max="1" step="0.01" />
+            </label>
+          </div>
+          <p class="scientific-note">Each protein is an independent present-versus-absent hypothesis. The objective default assigns prior probability 0.50 to every protein; weighted Bayes factors update its odds without normalization across proteins. Two negative-evidence mechanisms are available. The stage-wide fixed rule assigns one configured BF below 1 to each eligible nondetection. Alternatively, “Allow continuous negative evidence” can be enabled on individual datasets: it supersedes the fixed rule for that dataset, removes the historical 0.5 likelihood floor, scores weak observed values below BF=1, and represents eligible nondetections as x=0 (limited by the continuous-mode BF floor). Tq stays the positive empirical scale; zeros are evaluated against it rather than used to create a potentially zero Tq. Out-of-scope nodes remain neutral—for example, non-kinases in the kinase-activity stream. A protein is selected when its posterior is strictly above the selection cutoff. Tq × scales each dataset's stored empirical threshold. Newly selected candidates beyond the validated 891-node seed are inserted after their missing unordered pairs are characterized and cached. Kinase activity and phosphoprotein response share the PKA-KO phosphoproteomic source. The CCD/OMCD/IMCD streams are separately selectable, but the three streams within each assay share one experimental source; they are off in the generic default profile.</p>
+        </section>
+
+        <section class="stage" aria-labelledby="edge-title">
+          <div class="stage-heading">
+            <span class="stage-number">02</span>
+            <div>
+              <h2 id="edge-title">Characterize edges</h2>
+              <p>Combine selected pairwise Bayes factors as undirected evidence.</p>
+            </div>
+          </div>
+          <div id="edge-streams" class="stream-list"></div>
+          <div class="parameter-grid compact-grid">
+            <label class="check-field span-two">
+              <input id="penalize-unsupported-edges" type="checkbox" />
+              <span>Treat eligible unsupported pairs as evidence against an edge</span>
+            </label>
+            <label>
+              <span>Unsupported-pair BF</span>
+              <input id="unsupported-edge-bf" type="number" min="0.000001" max="1" step="any" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Continuous-mode BF floor</span>
+              <input id="continuous-edge-bf-floor" type="number" min="0.000000000001" max="1" step="any" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Edge prior</span>
+              <input id="edge-prior" type="number" min="0.000001" max="0.999999" step="any" inputmode="decimal" />
+            </label>
+            <label>
+              <span>Output cutoff</span>
+              <input id="edge-cutoff" type="number" min="0" max="1" step="0.01" />
+            </label>
+          </div>
+          <p class="scientific-note">Localization and motif streams scale their node- or site-specific Tq values. STRING and STITCH use Ref × because their normalizations use reference odds. The stage-wide fixed negative-evidence rule applies one selected BF below 1 when a source could assess both endpoints but has no relationship. The per-dataset continuous alternative supersedes that rule for its dataset, retains low measured similarities, motif scores, curation effort, STRING scores, and STITCH scores as BF&lt;1, and treats eligible no-record pairs as x=0 at the numerical floor. Missing assay coverage stays neutral. Scaffold closure remains positive-only because failure to share a strong scaffold is not an independent quantitative observation. Cached raw evidence is rescored when controls change.</p>
+        </section>
+
+        <section class="stage" aria-labelledby="path-title">
+          <div class="stage-heading path-heading">
+            <span class="stage-number">03</span>
+            <div>
+              <h2 id="path-title">Find paths</h2>
+              <p>Extend the graph to a target and rank supported routes.</p>
+            </div>
+            <label class="switch" title="Enable path finding">
+              <input id="path-enabled" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+          <div id="path-controls">
+            <div class="parameter-grid">
+              <label>
+                <span>Starting node</span>
+                <input id="path-start" type="text" autocomplete="off" placeholder="Prkaca" />
+              </label>
+              <label>
+                <span>Target</span>
+                <input id="path-target" type="text" autocomplete="off" placeholder="Aqp2" />
+              </label>
+              <label>
+                <span>Top paths</span>
+                <input id="path-top-k" type="number" min="1" max="500" step="1" />
+              </label>
+              <label>
+                <span>Maximum hops</span>
+                <input id="path-max-hops" type="number" min="1" max="12" step="1" />
+              </label>
+              <label>
+                <span>Path edge cutoff</span>
+                <input id="path-cutoff" type="number" min="0" max="0.999999" step="0.01" />
+              </label>
+            </div>
+            <div class="path-rules">
+              <label class="check-field">
+                <input id="ontology-directionality" type="checkbox" />
+                <span>Apply conservative directionality</span>
+              </label>
+              <label class="check-field">
+                <input id="omnipath-directionality" type="checkbox" />
+                <span>Include OmniPath source→target directions</span>
+              </label>
+              <label class="check-field">
+                <input id="signal-only" type="checkbox" />
+                <span>Signaling-component intermediates only</span>
+              </label>
+              <label class="check-field">
+                <input id="exclude-multirole-scaffolds" type="checkbox" />
+                <span>Also exclude multi-role kinase/scaffolds</span>
+              </label>
+            </div>
+            <fieldset id="ontology-selector" class="ontology-selector">
+              <legend>Allowed intermediate ontology roles</legend>
+              <div class="ontology-actions" aria-label="Ontology selection shortcuts">
+                <button id="ontology-all" type="button">Select all</button>
+                <button id="ontology-none" type="button">Clear</button>
+              </div>
+              <p>Select which node annotations qualify a protein or molecule to relay a path.</p>
+              <div id="path-ontology-classes" class="ontology-grid"></div>
+            </fieldset>
+            <p class="scientific-note">The directionality layer applies the established ontology-role restrictions first. OmniPath source→target records can add a unique direction only where ontology left a pair unresolved; they cannot reopen or reverse an ontology-disallowed traversal. Bidirectional OmniPath evidence leaves an otherwise unresolved pair traversable both ways, and source disagreements are audited. This changes path traversal, not the Bayesian edge probability or activation/inhibition sign. The sensitivity-oriented relay default includes ligand, binding, generic signaling-process, catalytic, regulatory, and second-messenger roles. Adaptor/scaffold is available but off by default. Endpoints are always exempt. Up to 500 paths can be requested.</p>
+          </div>
+        </section>
+
+        <section class="stage" aria-labelledby="temporal-title">
+          <div class="stage-heading path-heading">
+            <span class="stage-number">04</span>
+            <div>
+              <h2 id="temporal-title">Validate temporal order</h2>
+              <p>Compare proposed path order with the dDAVP phosphoproteomic time course.</p>
+            </div>
+            <label class="switch" title="Enable temporal path validation">
+              <input id="temporal-enabled" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+          <div id="temporal-controls">
+            <div class="parameter-grid">
+              <label>
+                <span>Variance prior df</span>
+                <input id="temporal-prior-df" type="number" min="0.1" max="1000" step="any" />
+              </label>
+              <label>
+                <span>Significance alpha</span>
+                <input id="temporal-alpha" type="number" min="0.000001" max="1" step="any" />
+              </label>
+              <label>
+                <span>Monte-Carlo draws</span>
+                <input id="temporal-draws" type="number" min="100" max="100000" step="100" />
+              </label>
+              <label>
+                <span>Minimum scored nodes</span>
+                <input id="temporal-min-scored" type="number" min="2" max="20" step="1" />
+              </label>
+              <label>
+                <span>Random seed</span>
+                <input id="temporal-seed" type="number" min="0" max="4294967295" step="1" />
+              </label>
+              <label>
+                <span>Peak-p correction</span>
+                <select id="temporal-p-adjust">
+                  <option value="within_gene_bonferroni">Within-gene Bonferroni</option>
+                  <option value="none">None (legacy reproduction)</option>
+                </select>
+              </label>
+            </div>
+            <p class="scientific-note temporal-note">This optional layer uses replicate log2(dDAVP/vehicle) trajectories at 1, 2, 5, and 15 minutes. It selects one phosphosite per gene by moderated signal-to-noise, propagates response-time uncertainty, and reports soft precedence plus a Monte-Carlo Kendall interval. The default multiple-testing correction accounts for searching across a gene's sites and timepoints. Temporal evidence never changes edge probabilities or the primary Bayesian path rank.</p>
+          </div>
+        </section>
+
+        <div class="form-actions">
+          <button id="reset-button" type="button" class="secondary-button">Reset</button>
+          <button id="run-button" type="submit" class="primary-button" disabled>
+            <span>Run workflow</span><span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </form>
+
+      <aside class="results" aria-live="polite">
+        <div id="empty-state" class="empty-state">
+          <div class="graph-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <p class="eyebrow">Ready</p>
+          <h2>One configuration.<br />One reproducible run.</h2>
+          <p>Select evidence streams and integration settings, then run the complete node-to-path workflow.</p>
+          <dl class="catalog-stats">
+            <div><dt id="catalog-nodes">891</dt><dd>validated seed nodes</dd></div>
+            <div><dt id="catalog-pairs">396,495</dt><dd>cached pair hypotheses</dd></div>
+          </dl>
+        </div>
+
+        <div id="job-state" class="job-state hidden">
+          <div class="job-header">
+            <div><p class="eyebrow">Analysis status</p><h2 id="job-message">Starting</h2></div>
+            <span id="job-percent">0%</span>
+          </div>
+          <div class="progress-track"><div id="progress-bar"></div></div>
+          <p id="job-detail" class="muted">The workbench reuses cached pairs and characterizes only new node combinations.</p>
+          <div class="job-actions">
+            <button id="cancel-job-button" type="button" class="danger-button">Cancel analysis</button>
+          </div>
+        </div>
+
+        <div id="result-state" class="result-state hidden">
+          <div class="result-heading">
+            <div><p class="eyebrow">Completed run</p><h2>Bayesian workflow result</h2></div>
+            <span class="complete-badge">Complete</span>
+          </div>
+          <div class="metric-row">
+            <div><strong id="metric-nodes">—</strong><span>selected nodes</span></div>
+            <div><strong id="metric-edges">—</strong><span>supported edges</span></div>
+            <div><strong id="metric-paths">—</strong><span>ranked paths</span></div>
+          </div>
+          <div id="warning-box" class="warning-box hidden"></div>
+          <section id="calibration-result" class="calibration-result hidden" aria-labelledby="calibration-result-title">
+            <div>
+              <p class="eyebrow">Positive-control calibration</p>
+              <h3 id="calibration-result-title">Fitted evidence confidence</h3>
+              <p id="calibration-result-detail"></p>
+            </div>
+            <strong id="calibration-result-score">—</strong>
+          </section>
+          <section id="calibration-parameters" class="calibration-parameters hidden" aria-labelledby="calibration-parameters-title">
+            <div class="table-heading calibration-parameters-heading">
+              <div>
+                <p class="eyebrow">Calibration transparency</p>
+                <h3 id="calibration-parameters-title">Fitted stream weights and Tq/reference scales</h3>
+              </div>
+              <span>Initial → fitted</span>
+            </div>
+            <p class="calibration-parameters-note">Weights control how strongly each stream changes posterior log-odds. Tq/reference multipliers control how raw scores become Bayes factors. Hover a fitted value to see its allowed range.</p>
+            <div class="calibration-parameter-grid">
+              <article id="node-calibration-parameters" class="calibration-parameter-card">
+                <h4>Node evidence</h4>
+                <div class="table-wrap">
+                  <table class="calibration-parameter-table">
+                    <thead><tr><th>Evidence stream</th><th>Weight start</th><th>Weight fitted</th><th>Tq/ref start</th><th>Tq/ref preferred</th><th>Tq/ref fitted</th></tr></thead>
+                    <tbody id="node-calibration-parameters-body"></tbody>
+                  </table>
+                </div>
+              </article>
+              <article id="edge-calibration-parameters" class="calibration-parameter-card">
+                <h4>Edge evidence</h4>
+                <div class="table-wrap">
+                  <table class="calibration-parameter-table">
+                    <thead><tr><th>Evidence stream</th><th>Weight start</th><th>Weight fitted</th><th>Tq/ref start</th><th>Tq/ref preferred</th><th>Tq/ref fitted</th></tr></thead>
+                    <tbody id="edge-calibration-parameters-body"></tbody>
+                  </table>
+                </div>
+              </article>
+            </div>
+          </section>
+          <section class="distribution-section" aria-labelledby="distribution-title">
+            <div class="table-heading distribution-heading">
+              <h3 id="distribution-title">Posterior probability distributions</h3>
+              <span>Log-scaled hypothesis counts</span>
+            </div>
+            <div class="distribution-grid">
+              <article class="distribution-card">
+                <div class="distribution-card-heading">
+                  <div><h4>Node probabilities</h4><p>All modeled protein candidates</p></div>
+                  <strong id="node-distribution-count">—</strong>
+                </div>
+                <svg id="node-distribution-chart" class="distribution-chart" viewBox="0 0 440 218" role="img" aria-label="Histogram of node posterior probabilities"></svg>
+                <dl id="node-distribution-stats" class="distribution-stats"></dl>
+              </article>
+              <article class="distribution-card">
+                <div class="distribution-card-heading">
+                  <div><h4>Edge probabilities</h4><p>Unique undirected graph pairs</p></div>
+                  <strong id="edge-distribution-count">—</strong>
+                </div>
+                <svg id="edge-distribution-chart" class="distribution-chart" viewBox="0 0 440 218" role="img" aria-label="Histogram of edge posterior probabilities"></svg>
+                <dl id="edge-distribution-stats" class="distribution-stats"></dl>
+              </article>
+            </div>
+            <p class="distribution-note">Each bar is a fixed-width posterior-probability bin. Bar height uses log<sub>10</sub>(count + 1) so large neutral-prior peaks do not obscure smaller supported tails. The dashed orange line marks the configured output cutoff.</p>
+          </section>
+          <section id="directionality-result" class="directionality-result hidden" aria-labelledby="directionality-result-title">
+            <div>
+              <p class="eyebrow">Ontology + OmniPath directionality</p>
+              <h3 id="directionality-result-title"><strong id="oriented-edge-count">—</strong> supported edges uniquely oriented</h3>
+              <p id="directionality-result-detail"></p>
+            </div>
+            <strong id="oriented-edge-percent">—</strong>
+          </section>
+          <section id="temporal-result" class="temporal-result hidden" aria-labelledby="temporal-result-title">
+            <div>
+              <p class="eyebrow">Temporal path validation</p>
+              <h3 id="temporal-result-title"><strong id="temporal-informative-count">—</strong> paths have interpretable temporal order</h3>
+              <p id="temporal-result-detail"></p>
+            </div>
+            <strong id="temporal-passing-genes">—</strong>
+          </section>
+          <section id="path-network-section" class="path-network-section hidden" aria-labelledby="path-network-title">
+            <div class="table-heading path-network-heading">
+              <div>
+                <p class="eyebrow">Merged pathway view</p>
+                <h3 id="path-network-title">Predicted signaling network</h3>
+              </div>
+              <div class="path-network-controls">
+                <label for="path-network-limit">Show</label>
+                <select id="path-network-limit" aria-label="Number of top paths shown"></select>
+                <button id="path-network-relayout" type="button" class="secondary-button">Re-layout</button>
+              </div>
+            </div>
+            <p class="path-network-note">Top paths are overlaid into one network. Shared hubs and relationships appear once; select any node or edge to load its full evidence ledger below.</p>
+            <div class="path-network-canvas">
+              <svg id="path-network-svg" role="img" aria-labelledby="path-network-title path-network-description">
+                <desc id="path-network-description">Merged network of the most likely paths. Node appearance represents node posterior probability and edge appearance represents edge posterior probability.</desc>
+              </svg>
+            </div>
+            <div class="path-network-legend" aria-label="Network legend">
+              <span><i class="legend-node legend-node-supported"></i>Support</span>
+              <span><i class="legend-node legend-node-refuting"></i>Counterevidence</span>
+              <span><i class="legend-node legend-node-neutral"></i>Near prior</span>
+              <span><i class="legend-node legend-node-unscored"></i>No node posterior</span>
+              <span><i class="legend-evidence-gradient"></i>Counterevidence ← posterior strength → support</span>
+              <span><i class="legend-arrow">→</i>Constrained direction</span>
+            </div>
+            <p id="path-network-detail" class="path-network-detail" aria-live="polite"></p>
+          </section>
+          <section id="evidence-inspector" class="evidence-inspector" aria-labelledby="evidence-inspector-title">
+            <div class="table-heading evidence-inspector-heading">
+              <div>
+                <p class="eyebrow">Evidence transparency</p>
+                <h3 id="evidence-inspector-title">Inspect one hypothesis</h3>
+              </div>
+              <span>Exact run settings</span>
+            </div>
+            <p class="evidence-inspector-note">Select a network node or edge, or enter symbols manually. The ledger shows which streams supported, refuted, or left the hypothesis neutral, including the applied BF, fitted/user weight, change in log<sub>2</sub> posterior odds, and the BF's position within that stream's full score distribution. Disabled streams are shown but never counted.</p>
+            <div class="evidence-query-grid">
+              <form id="node-evidence-form" class="evidence-query-card">
+                <label for="node-evidence-symbol"><strong>Node</strong><span>Gene symbol</span></label>
+                <div class="evidence-query-row">
+                  <input id="node-evidence-symbol" type="text" placeholder="Prkaca" autocomplete="off" />
+                  <button type="submit" class="secondary-button">Inspect</button>
+                </div>
+              </form>
+              <form id="edge-evidence-form" class="evidence-query-card">
+                <label><strong>Edge</strong><span>Two graph nodes; order does not matter</span></label>
+                <div class="evidence-edge-fields">
+                  <input id="edge-evidence-node-a" type="text" placeholder="Prkaca" aria-label="First edge node" autocomplete="off" />
+                  <span aria-hidden="true">—</span>
+                  <input id="edge-evidence-node-b" type="text" placeholder="Aqp2" aria-label="Second edge node" autocomplete="off" />
+                  <button type="submit" class="secondary-button">Inspect</button>
+                </div>
+              </form>
+            </div>
+            <p id="evidence-inspector-message" class="evidence-inspector-message muted">Choose a hypothesis to see its update ledger.</p>
+            <div id="evidence-inspector-result" class="evidence-inspector-result hidden">
+              <div class="evidence-summary-grid">
+                <div><span>Hypothesis</span><strong id="evidence-summary-hypothesis">—</strong></div>
+                <div><span>Prior</span><strong id="evidence-summary-prior">—</strong></div>
+                <div><span>Posterior</span><strong id="evidence-summary-posterior">—</strong></div>
+                <div><span>Decision</span><strong id="evidence-summary-decision">—</strong></div>
+              </div>
+              <div id="evidence-reconciliation" class="evidence-reconciliation"></div>
+              <div class="evidence-ledger-wrap">
+                <table class="evidence-ledger">
+                  <thead><tr><th>Evidence stream</th><th>Call</th><th>Observed / scope</th><th>BF</th><th>Weight</th><th>Δ log₂ odds</th><th>BF percentile</th></tr></thead>
+                  <tbody id="evidence-ledger-body"></tbody>
+                </table>
+              </div>
+              <p id="evidence-stream-detail" class="evidence-stream-detail">Select a stream row for its normalization, model weight, and score-distribution position.</p>
+              <div id="evidence-stream-distribution" class="evidence-stream-distribution hidden">
+                <div class="evidence-stream-distribution-heading">
+                  <strong>Applied Bayes-factor distribution</strong>
+                  <span>Bar height is log-scaled</span>
+                </div>
+                <svg id="evidence-stream-distribution-chart" viewBox="0 0 720 164" role="img" aria-label="Distribution of applied Bayes factors for the selected evidence stream"></svg>
+                <p id="evidence-stream-distribution-summary"></p>
+              </div>
+            </div>
+          </section>
+          <div class="table-heading"><h3>Most likely paths</h3><span>Product score</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Rank</th><th>Route</th><th>Hops</th><th>Score</th><th class="temporal-column hidden">Temporal nodes</th><th class="temporal-column hidden">Temporal τ [95% interval]</th></tr></thead>
+              <tbody id="paths-body"></tbody>
+            </table>
+          </div>
+          <div class="download-block">
+            <h3>Run files</h3>
+            <div id="download-links" class="download-links"></div>
+          </div>
+        </div>
+
+        <div id="error-state" class="error-state hidden">
+          <p id="error-eyebrow" class="eyebrow">Run stopped</p>
+          <h2 id="error-title">Configuration needs attention</h2>
+          <p id="error-message"></p>
+          <button id="reconnect-server" type="button" class="primary-button hidden">Reconnect to local server</button>
+          <button id="dismiss-error" type="button" class="secondary-button">Return to settings</button>
+        </div>
+      </aside>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+# Project data and generated analysis artifacts live in the companion archive.
+/data/
+/results/
+/outputs/
+/*.xlsx
+/*.inspect.ndjson
+
+# Large or generated binary formats.
+*.sqlite
+*.sqlite3
+*.db
+*.zip
+*.gz
+*.7z
+
+# Python and notebook caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+node_modules/
+/deliverables/
+
+# Local runtime/editor files.
+*.log
+.workbench.pid
+*.tmp
+*.bak
+.env
+.env.*
+.venv/
+venv/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

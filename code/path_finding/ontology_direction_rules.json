@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "name": "Conservative ontology signal-propagation rules",
+  "semantics": "Within the ontology layer, a rule source_class -> target_class supports removal of the reverse traversal for a supported undirected edge.",
+  "conflict_policy": "If multi-role ontology annotations support both directions, the ontology layer leaves the pair unresolved. A unique external direction may subsequently resolve it under external_direction_policy. If no direction source resolves the pair, both traversals are retained.",
+  "sign_policy": "Direction and biochemical sign are separate. These rules orient possible propagation but do not label activation or inhibition.",
+  "external_direction_policy": {
+    "source": "OmniPath mouse core post-translational interactions",
+    "rule": "Mapped source-target records support their reported direction. A unique ontology orientation remains in force. OmniPath uniquely orients only pairs that ontology left unresolved, so it can add a disallowed reverse traversal but cannot reopen or reverse an ontology-disallowed traversal. Opposing source directions are recorded for audit. If OmniPath records occur in both directions for an otherwise unresolved pair, both traversals are retained.",
+    "consensus_direction_usage": "The OmniPath consensus_direction flag is retained for audit but is not required; agreement of all mapped directed records for a pair is the operational criterion.",
+    "effect_on_probability": "None. The permitted traversal retains the undirected edge probability and only a uniquely disallowed reverse traversal is set to zero."
+  },
+  "ontology_classes": [
+    "receptor",
+    "receptor_regulator",
+    "ligand",
+    "kinase",
+    "phosphatase",
+    "cyclase",
+    "phosphodiesterase",
+    "phospholipase",
+    "nos",
+    "gtpase",
+    "gtpase_regulator",
+    "kinase_phosphatase_binding",
+    "second_messenger_binding",
+    "signaling_process",
+    "signaling_regulation",
+    "second_messenger",
+    "adaptor_scaffold"
+  ],
+  "rules": [
+    {
+      "id": "ligand_to_receptor",
+      "source_class": "ligand",
+      "target_class": "receptor",
+      "effect": "unspecified",
+      "basis": "GO role semantics",
+      "rationale": "A receptor ligand or signaling-receptor-binding entity is treated as acting on the receptor."
+    },
+    {
+      "id": "receptor_regulator_to_receptor",
+      "source_class": "receptor_regulator",
+      "target_class": "receptor",
+      "effect": "unspecified",
+      "basis": "GO role semantics",
+      "rationale": "A regulator of receptor activity is treated as acting on the receptor."
+    },
+    {
+      "id": "kinase_to_kinase_phosphatase_binding",
+      "source_class": "kinase",
+      "target_class": "kinase_phosphatase_binding",
+      "effect": "unspecified",
+      "basis": "project propagation policy",
+      "rationale": "Per the project rule, a kinase-binding protein does not propagate toward the connected kinase; the retained direction is kinase to binding protein."
+    },
+    {
+      "id": "phosphatase_to_kinase_phosphatase_binding",
+      "source_class": "phosphatase",
+      "target_class": "kinase_phosphatase_binding",
+      "effect": "unspecified",
+      "basis": "project propagation policy by kinase/phosphatase symmetry",
+      "rationale": "The requested kinase-binding rule is applied analogously to phosphatase-binding proteins."
+    },
+    {
+      "id": "gtpase_regulator_to_gtpase",
+      "source_class": "gtpase_regulator",
+      "target_class": "gtpase",
+      "effect": "unspecified",
+      "basis": "GO role semantics",
+      "rationale": "A GTPase regulator, exchange factor, or activating protein is treated as acting on its connected GTPase."
+    },
+    {
+      "id": "cyclase_to_second_messenger",
+      "source_class": "cyclase",
+      "target_class": "second_messenger",
+      "effect": "production",
+      "basis": "enzyme-product role semantics",
+      "rationale": "Adenylate and guanylate cyclases produce cyclic-nucleotide second messengers."
+    },
+    {
+      "id": "phospholipase_to_second_messenger",
+      "source_class": "phospholipase",
+      "target_class": "second_messenger",
+      "effect": "production",
+      "basis": "enzyme-product role semantics",
+      "rationale": "Phosphatidylinositol phospholipase C activity produces lipid-derived second-messenger signals."
+    },
+    {
+      "id": "nos_to_second_messenger",
+      "source_class": "nos",
+      "target_class": "second_messenger",
+      "effect": "production",
+      "basis": "enzyme-product role semantics",
+      "rationale": "Nitric-oxide synthase produces the second messenger nitric oxide."
+    },
+    {
+      "id": "phosphodiesterase_to_second_messenger",
+      "source_class": "phosphodiesterase",
+      "target_class": "second_messenger",
+      "effect": "negative",
+      "basis": "enzyme-substrate role semantics",
+      "rationale": "A cyclic-nucleotide phosphodiesterase acts on and decreases its connected cyclic-nucleotide second messenger; sign is recorded but not yet used in path scoring."
+    },
+    {
+      "id": "second_messenger_to_second_messenger_binding",
+      "source_class": "second_messenger",
+      "target_class": "second_messenger_binding",
+      "effect": "unspecified",
+      "basis": "ligand-binding role semantics",
+      "rationale": "A second messenger is treated as acting on a connected protein annotated for cyclic-nucleotide or calmodulin binding."
+    }
+  ],
+  "classes_without_standalone_direction": [
+    {
+      "class": "signaling_process",
+      "reason": "A broad process annotation identifies participation but not causal order."
+    },
+    {
+      "class": "signaling_regulation",
+      "reason": "A broad regulation annotation does not identify which connected node is regulated."
+    },
+    {
+      "class": "adaptor_scaffold",
+      "reason": "Adaptor/scaffold activity supports assembly or proximity but does not by itself establish signal-flow direction."
+    }
+  ]
+}
