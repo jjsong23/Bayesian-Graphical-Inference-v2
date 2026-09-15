@@ -6,6 +6,50 @@ Read this file before changing the project. It is the canonical short handoff fo
 
 Construct an auditable Bayesian graph of renal collecting-duct/principal-cell signaling participants, estimate undirected association probabilities between them from selectable evidence streams, and rank plausible signal-propagating paths from a user-selected start node to a target such as Aqp2.
 
+Version 2 additionally implements a bounded backward frontier search for cases
+where exhaustive AlphaPulldown scoring is infeasible. Read
+`docs/V2_BACKWARD_FRONTIER_PLAN.md` before changing that workflow. Its portable
+entry point is `dynamic_search.py`; Biowulf scripts are under `biowulf/` and
+must remain free of AI-assistant/API dependencies.
+
+As of 2026-09-15, every new AlphaPulldown pair uses exactly one prediction from
+`model_1_multimer_v3`. Heavy GPU outputs live only in `$LSCRATCH`; compact ipTM,
+top-structure, and provenance artifacts return to the run. Monomer feature/MSA
+objects are private to one search and are removed only after completed-round
+integration and frontier selection, retaining the new frontier; deletions are
+audited in `feature_cleanup.tsv`. Do not restore a shared persistent feature
+directory without adding reference counting and concurrency protection.
+
+The prior `/data/$USER/ppi_screen` is imported into the pair cache only after
+finite `[0,1]` ipTM plus nonempty `ranked_0.pdb` validation. Low scores must not
+be discarded. It remains protocol
+`legacy_ppi_screen_5models_predictions1`; fallback reuse is explicit and each
+edge ledger records the actual protocol/source. HuRI is an optional cheap edge
+stream. Reported pairs are positive evidence, while unreported pairs are
+neutral unless the user deliberately enables a scoped weak-negative rule.
+HuRI absence must never be described as a demonstrated negative experiment.
+Read `docs/V2_STORAGE_CACHE_HURI_2026-09-15.md` before modifying these rules.
+
+As of 2026-09-14, Version 2 also owns the upstream node-selection and cheap-edge
+stages. The canonical integrator is `code/backward_search/pipeline.py`, the
+browser entry point is `/v2.html`, and the root CLI exposes `pipeline-config`,
+`pipeline-init`, `pipeline-step`, `pipeline-submit`, `pipeline-collect`,
+`pipeline-status`, and `pipeline-trace`. Read
+`docs/V2_END_TO_END_PIPELINE.md` before modifying the handoff. Node posterior
+is a selection gate rather than a path-score term; cheap edge factors are
+exported from the exact workbench contribution matrices and retain their
+original weights; AlphaPulldown is applied only after the cheap shortlist; and
+directionality constrains traversal without changing undirected edge existence.
+
+For algorithm development, initialize Version 2 with `--development`. In this
+mode one `step` performs one durable stage rather than a whole round, and the
+run records all admitted/excluded candidates, per-stream odds updates,
+shortlist decisions, structural cache hits/misses, final edge updates, and beam
+decisions. The live audit is `development_trace.html`; authoritative ledgers
+are the per-round TSVs and `development_events.jsonl`. See
+`docs/V2_STEPWISE_DEVELOPMENT_MODE.md`. Do not introduce different scientific
+equations into this mode: it is an observable execution of the same search.
+
 ## Current architecture
 
 ```text
@@ -31,6 +75,18 @@ product-ranked loopless paths
 ```
 
 The validated seed graph contains **891 nodes: 871 proteins and 20 curated secondary messengers**. The GUI is no longer capped at 891: newly selected protein nodes are characterized against the active universe and added as needed. Raw observations for new unordered pairs are cached so later runs calculate only previously unseen pairs under the current source signature. The Git repository contains code, tests, configuration, and documentation; the large `data/`, `results/`, `outputs/`, and SQLite cache trees are restored from the companion OneDrive archive and are intentionally ignored by Git.
+
+The Version 2 backward workflow does not structurally score the full matrix.
+Current end-to-end initialization still materializes a complete inexpensive
+edge matrix for audit/Version 1 compatibility; the frontier engine then scores
+only each current-node/candidate-parent pair, retains 20
+per frontier path, exports only uncached structurally eligible pairs, and then
+globally prunes to five distinct frontier nodes after imported structural
+scores update the edge odds. Partial paths are loopless and ranked by the
+product of edge posteriors. The intended receptor is always structurally
+screened but reaches the solution set only if it survives global beam pruning.
+Raw structural scores are cached by unordered pair, protocol ID, and metric in
+`runtime/pair_cache.sqlite3`.
 
 A lab-specific Aqp2/collecting-duct profile additionally enables proteome and
 RNA abundance for CCD, OMCD, and IMCD. All six new streams plus the existing

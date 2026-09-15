@@ -20,6 +20,7 @@ import gzip
 import hashlib
 import json
 import math
+import os
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -58,6 +59,11 @@ ProgressCallback = Callable[[str, float], None]
 CancellationCheckpoint = Callable[[], None]
 PairFilter = Callable[[tuple[str, str]], bool]
 PAIR_INSERT_BATCH_SIZE = 5_000
+PAIR_PROBE_THRESHOLD = 500_000
+LOCAL_RUNTIME_CACHE = (
+    Path(__file__).resolve().parents[2]
+    / "runtime/incremental_edge_cache/edge_pair_cache.sqlite3"
+)
 
 
 @dataclass
@@ -120,7 +126,8 @@ def iter_incremental_pairs(
 
 
 def cache_path(project: Path) -> Path:
-    return project / "data/edge_characterization/incremental_edge_cache/edge_pair_cache.sqlite3"
+    override = os.environ.get("GBI_INCREMENTAL_EDGE_CACHE", "").strip()
+    return Path(override).expanduser().resolve() if override else LOCAL_RUNTIME_CACHE
 
 
 def _source_paths(project: Path) -> list[Path]:
@@ -833,7 +840,7 @@ def ensure_incremental_pairs(
         # substantially faster than scanning a multi-gigabyte cache and joining it
         # to a temporary node table.  Retain the set-based query for very large
         # dynamic scopes, where one probe per pair would itself become expensive.
-        if requested_count <= 50_000:
+        if requested_count <= PAIR_PROBE_THRESHOLD:
             exists_sql = (
                 "SELECT 1 FROM pair_evidence "
                 "WHERE evidence_signature=? AND node_a=? AND node_b=?"
@@ -1136,21 +1143,33 @@ def incremental_pair_factor_table(
     """Rescore only named cached pairs, avoiding a full incremental-cache scan."""
     signature, _ = evidence_signature(project)
     connection = _connect(project)
-    select_sql = """
-        SELECT node_a, node_b, mpkccd_dot_product, mpkccd_tq_a, mpkccd_tq_b,
-               kinase_hits_json, string_score,
-               hpa_primary_similarity, hpa_primary_tq_a, hpa_primary_tq_b,
-               hpa_high_similarity, hpa_high_tq_a, hpa_high_tq_b,
-               omnipath_curation_effort, stitch_score
-        FROM pair_evidence
-        WHERE evidence_signature=? AND node_a=? AND node_b=?
-    """
     output: list[tuple[str, str, float]] = []
     try:
-        for left, right in dict.fromkeys(canonical_pair(*pair) for pair in pairs):
-            row = connection.execute(select_sql, (signature, left, right)).fetchone()
-            if row is None:
-                continue
+        requested = list(dict.fromkeys(canonical_pair(*pair) for pair in pairs))
+        connection.execute(
+            "CREATE TEMP TABLE requested_pairs("
+            "node_a TEXT NOT NULL, node_b TEXT NOT NULL, "
+            "PRIMARY KEY(node_a,node_b)) WITHOUT ROWID"
+        )
+        connection.executemany(
+            "INSERT INTO requested_pairs(node_a,node_b) VALUES (?,?)", requested
+        )
+        cursor = connection.execute(
+            """
+            SELECT pair.node_a, pair.node_b,
+                   pair.mpkccd_dot_product, pair.mpkccd_tq_a, pair.mpkccd_tq_b,
+                   pair.kinase_hits_json, pair.string_score,
+                   pair.hpa_primary_similarity, pair.hpa_primary_tq_a, pair.hpa_primary_tq_b,
+                   pair.hpa_high_similarity, pair.hpa_high_tq_a, pair.hpa_high_tq_b,
+                   pair.omnipath_curation_effort, pair.stitch_score
+            FROM requested_pairs AS requested
+            JOIN pair_evidence AS pair
+              ON pair.node_a=requested.node_a AND pair.node_b=requested.node_b
+            WHERE pair.evidence_signature=?
+            """,
+            (signature,),
+        )
+        for row in cursor:
             factor = 1.0
             if handler == "mpkccd_localization" and row[2] is not None and row[3] is not None and row[4] is not None:
                 factor = (

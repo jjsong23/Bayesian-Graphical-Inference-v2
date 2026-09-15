@@ -30,7 +30,7 @@ def workbench_url(host: str, port: int) -> str:
 def is_healthy(url: str, timeout: float = 5.0) -> bool:
     """Return true only when the workbench configuration API responds."""
     try:
-        with urllib.request.urlopen(f"{url}/api/config", timeout=timeout) as response:
+        with urllib.request.urlopen(f"{url}/api/v2/config", timeout=timeout) as response:
             if response.status != 200:
                 return False
             payload = json.load(response)
@@ -112,7 +112,7 @@ def main() -> int:
     pid_text = f" (PID {pid})" if pid else ""
     print(f"Graphical Bayesian Inference workbench {status}{pid_text}: {url}")
     if not args.no_browser:
-        webbrowser.open(url)
+        webbrowser.open(f"{url}/v2.html")
     return 0
 
 

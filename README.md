@@ -51,6 +51,73 @@ competition in which probabilities sum to one. Edge existence remains an
 undirected hypothesis even when the separate propagation layer disallows one
 traversal direction.
 
+## Version 2: backward frontier search
+
+Version 2 now provides a complete GUI-and-CLI pipeline: it performs configurable
+node selection itself, materializes the enabled inexpensive edge evidence, and
+then launches the bounded backward search. Open `http://127.0.0.1:8765/v2.html`
+after running `python launch.py`; no separate Version 1 node-selection run is
+required. See [`docs/V2_END_TO_END_PIPELINE.md`](docs/V2_END_TO_END_PIPELINE.md)
+for the stage boundaries, equations, GUI controls, and Biowulf checkpoint flow.
+
+The frontier stage avoids structurally scoring the complete graph. The current
+end-to-end initialization still materializes the selected nodes' inexpensive
+edge-evidence matrix for audit and compatibility with the Version 1 engine;
+AlphaPulldown itself is strictly frontier-bounded. The search begins at a selected endpoint,
+scores candidate upstream parents with cheap evidence, retains 20 candidates
+per current frontier path for AlphaPulldown, and keeps the five best distinct
+upstream frontier nodes after structural scores are returned. The search is
+resumable and caches raw pair evidence so previously predicted pairs are not
+recomputed.
+
+The Biowulf structural protocol now runs exactly one prediction per pair
+(`model_1_multimer_v3`, one prediction), performs heavy model work on
+node-local `$LSCRATCH`, and returns only compact score/structure/provenance
+artifacts. Run-private monomer features are deleted after the frontier moves
+away from them, with a byte-level cleanup audit. Existing valid results under
+`/data/$USER/ppi_screen` can be imported without copying the model tree, and
+HuRI binary interactions are available as optional mapped experimental edge
+evidence. See
+[`docs/V2_STORAGE_CACHE_HURI_2026-09-15.md`](docs/V2_STORAGE_CACHE_HURI_2026-09-15.md).
+
+```powershell
+python dynamic_search.py init --config configs/backward_search.example.json --run-dir runs/example
+python dynamic_search.py step --run-dir runs/example
+python dynamic_search.py status --run-dir runs/example
+```
+
+The complete workflow has parallel GUI/CLI controls:
+
+```powershell
+python dynamic_search.py pipeline-config --output configs/my_pipeline.json
+python dynamic_search.py pipeline-init --config configs/my_pipeline.json --run-dir runs/my_run
+python dynamic_search.py pipeline-step --run-dir runs/my_run --until-checkpoint
+```
+
+For development and scientific inspection, add `--development` to `init`.
+Every subsequent `step` then performs exactly one visible action—candidate
+enumeration, cheap-evidence updating, shortlist selection, structural-cache
+and batch preparation, final edge updating, or frontier selection—and pauses.
+The run writes complete keep/reject ledgers plus a continuously refreshed
+`development_trace.html`:
+
+```powershell
+python dynamic_search.py init --development --config configs/backward_search.example.json --run-dir runs/inspect
+python dynamic_search.py step --run-dir runs/inspect
+python dynamic_search.py status --run-dir runs/inspect
+python dynamic_search.py trace --run-dir runs/inspect
+```
+
+See [`docs/V2_STEPWISE_DEVELOPMENT_MODE.md`](docs/V2_STEPWISE_DEVELOPMENT_MODE.md)
+for every pause point, output table, and equation.
+
+When a round reports `waiting_for_structural`, the repository can be copied to
+NIH Biowulf and submitted using `biowulf/submit_round.sh`. The batch side uses
+only deterministic scripts, Slurm, SQLite, and the installed AlphaPulldown
+module—no Codex, ChatGPT, LLM API, or AI assistant. See
+[`docs/V2_BACKWARD_FRONTIER_PLAN.md`](docs/V2_BACKWARD_FRONTIER_PLAN.md) for the
+scientific plan and [`biowulf/README.md`](biowulf/README.md) for exact commands.
+
 ## Quick start
 
 Python 3.10 or newer is recommended.
@@ -73,6 +140,9 @@ The reproducible lab-sharing release procedure is documented in
 ## Main directories
 
 - `code/`: Bayesian utilities and reproducible analysis modules.
+- `code/backward_search/`: bounded backward beam search and structural-score cache.
+- `biowulf/`: portable AlphaPulldown Slurm jobs and submission instructions.
+- `configs/`: auditable Version 2 configuration examples.
 - `gui/`: minimal local web workbench, evidence registry, and workflow engine.
 - `docs/`: detailed methods, target-extension documentation, and lab notebook.
 - `notebooks/`: reserved for exploratory notebooks.
@@ -93,6 +163,7 @@ From the repository root:
 
 ```powershell
 python -m unittest discover -s code -p "test_bayes_factors.py"
+python -m unittest discover -s code -p "test_engine.py"
 python -m unittest discover -s code\path_finding -p "test_*.py"
 python -m unittest discover -s code\sensitivity_analysis -p "test_*.py"
 python -m unittest discover -s gui -p "test_*.py"

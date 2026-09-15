@@ -1,0 +1,68 @@
+{
+  "project_root": "..",
+  "target": "Aqp2",
+  "receptor": "Avpr2",
+  "node_table": "data/node_selection/node_universe_combined_nonzero.tsv",
+  "sequence_fasta": "data/backward_search/node_sequences.fasta",
+  "symbol_column": "symbol",
+  "classes_column": "classes",
+  "allowed_intermediate_classes": [
+    "receptor",
+    "receptor_regulator",
+    "ligand",
+    "kinase",
+    "phosphatase",
+    "cyclase",
+    "phosphodiesterase",
+    "phospholipase",
+    "nos",
+    "gtpase",
+    "gtpase_regulator",
+    "kinase_phosphatase_binding",
+    "second_messenger"
+  ],
+  "prior_probability": 0.5,
+  "cheap_top_n_per_frontier": 20,
+  "beam_width": 5,
+  "maximum_depth": 6,
+  "always_include_receptor": true,
+  "stop_when_receptor_reached": true,
+  "development_mode": false,
+  "pair_cache": "runtime/pair_cache.sqlite3",
+  "huri": {
+    "enabled": false,
+    "interactions_file": "runtime/reference/huri/HuRI.tsv",
+    "mapping_file": "data/edge_characterization/localization/hpa/v25.1/processed/mouse_human_hpa_mapping.tsv",
+    "weight": 1.0,
+    "positive_bayes_factor": 5.0,
+    "nonreported_scope": "neutral",
+    "nonreported_bayes_factor": 0.9,
+    "screened_genes_file": ""
+  },
+  "cheap_streams": [
+    {
+      "id": "hpa_primary",
+      "file": "data/backward_search/hpa_primary_with_target.tsv",
+      "factor_column": "bayes_factor",
+      "weight": 1.0,
+      "missing_bayes_factor": 1.0
+    }
+  ],
+  "structural": {
+    "enabled": true,
+    "metric": "iptm",
+    "reference_score": 0.6,
+    "weight": 1.0,
+    "bayes_factor_floor": 0.1,
+    "bayes_factor_ceiling": 10.0,
+    "protocol_id": "alphapulldown_biowulf_v2_model1_cycles3_predictions1_compact",
+    "compatible_protocol_ids": ["legacy_ppi_screen_5models_predictions1"],
+    "num_cycle": 3,
+    "num_predictions_per_model": 1,
+    "model_names": "model_1_multimer_v3",
+    "maximum_concurrent_jobs": 10,
+    "legacy_screen_directory": "../ppi_screen",
+    "legacy_protocol_id": "legacy_ppi_screen_5models_predictions1",
+    "require_legacy_ranked_structure": true
+  }
+}

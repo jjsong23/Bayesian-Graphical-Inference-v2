@@ -2738,7 +2738,7 @@ def combine_edge_factors(
         if has_incremental_nodes:
             incremental_loader = (
                 incremental_pair_factor_table
-                if len(incremental_pairs) <= 50_000
+                if len(incremental_pairs) <= 500_000
                 else incremental_factor_table
             )
             tables.append(

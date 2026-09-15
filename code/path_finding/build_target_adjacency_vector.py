@@ -1249,7 +1249,10 @@ def build_target_adjacency_vector(
         / "data/edge_characterization/kinase_predictor"
         / "phosphosite_database/raw/uniprot_mouse_reference_proteome.tsv.gz"
     )
-    for path in (universe_path, current_matrix_path, uniprot_path):
+    required_paths = [universe_path, uniprot_path]
+    if write_extended_matrix:
+        required_paths.append(current_matrix_path)
+    for path in required_paths:
         if not path.exists():
             raise FileNotFoundError(f"Required input not found: {path}")
 
@@ -1387,21 +1390,22 @@ def build_target_adjacency_vector(
         .to_numpy()
     )
 
-    current = pd.read_csv(
-        current_matrix_path,
-        sep="\t",
-        index_col=0,
-    )
-    if (
-        current.index.astype(str).tolist() != symbols
-        or current.columns.astype(str).tolist() != symbols
-    ):
-        raise ValueError("Current adjacency matrix order differs from universe")
-    current_values = current.to_numpy(dtype=float)
-    if not np.array_equal(current_values, current_values.T):
-        raise ValueError("Current adjacency matrix is not symmetric")
+    current_values: np.ndarray | None = None
     extended: pd.DataFrame | None = None
     if write_extended_matrix:
+        current = pd.read_csv(
+            current_matrix_path,
+            sep="\t",
+            index_col=0,
+        )
+        if (
+            current.index.astype(str).tolist() != symbols
+            or current.columns.astype(str).tolist() != symbols
+        ):
+            raise ValueError("Current adjacency matrix order differs from universe")
+        current_values = current.to_numpy(dtype=float)
+        if not np.array_equal(current_values, current_values.T):
+            raise ValueError("Current adjacency matrix is not symmetric")
         extended_symbols = [*symbols, target_symbol]
         extended_values = np.zeros((n + 1, n + 1), dtype=float)
         extended_values[:n, :n] = current_values
@@ -1526,11 +1530,17 @@ def build_target_adjacency_vector(
             f"The current {n}x{n} matrix is copied without modification. The "
             "target vector is appended as one symmetric row and column; the "
             "new target diagonal is zero."
+            if write_extended_matrix
+            else "No square matrix was read or written; only the target vector was calculated."
         ),
         "validation": validation,
         "input_sha256": {
             universe_path.name: sha256_file(universe_path),
-            current_matrix_path.name: sha256_file(current_matrix_path),
+            **(
+                {current_matrix_path.name: sha256_file(current_matrix_path)}
+                if write_extended_matrix
+                else {}
+            ),
             uniprot_path.name: sha256_file(uniprot_path),
         },
     }

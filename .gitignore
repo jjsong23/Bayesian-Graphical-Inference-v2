@@ -2,6 +2,8 @@
 /data/
 /results/
 /outputs/
+/runs/
+/runtime/
 /*.xlsx
 /*.inspect.ndjson
 
@@ -17,6 +19,8 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.test_work/
+code/backward_search/tmp*/
 .mypy_cache/
 .ruff_cache/
 .ipynb_checkpoints/

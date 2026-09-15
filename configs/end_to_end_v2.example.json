@@ -1,0 +1,257 @@
+{
+  "bayesian": {
+    "calibration": {
+      "enabled": false,
+      "known_nodes": [],
+      "known_edges": [],
+      "regularization_strength": 0.1,
+      "multistart_count": 2
+    },
+    "node_streams": {
+      "protein_abundance": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      },
+      "pc_transcript": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      },
+      "kinase_activity": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 0.1
+      },
+      "phosphoprotein_response": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 0.1
+      },
+      "pka_ca_ko_phosphoprotein_response": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 0.1
+      },
+      "pka_cb_ko_phosphoprotein_response": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 0.1
+      },
+      "collecting_duct_proteome_ccd": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      },
+      "collecting_duct_proteome_omcd": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      },
+      "collecting_duct_proteome_imcd": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      },
+      "collecting_duct_rna_ccd": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      },
+      "collecting_duct_rna_omcd": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      },
+      "collecting_duct_rna_imcd": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0
+      }
+    },
+    "node_integration": {
+      "include_second_messengers": true,
+      "non_neutral_tolerance": 1e-12,
+      "prior_probability": 0.5,
+      "output_probability_cutoff": 0.5,
+      "penalize_unobserved": false,
+      "unobserved_bayes_factor": 0.5,
+      "continuous_negative_evidence": false,
+      "continuous_bayes_factor_floor": 1e-06
+    },
+    "edge_streams": {
+      "mpkccd_localization": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0,
+        "parameters": {}
+      },
+      "kinase_predictor": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 0.1,
+        "parameters": {}
+      },
+      "string_v12": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0,
+        "parameters": {}
+      },
+      "hpa_primary": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0,
+        "parameters": {}
+      },
+      "hpa_high_confidence": {
+        "enabled": false,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0,
+        "parameters": {}
+      },
+      "omnipath_core": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0,
+        "parameters": {}
+      },
+      "stitch_secondary_messenger": {
+        "enabled": true,
+        "weight": 1.0,
+        "continuous_negative_evidence": false,
+        "tq_multiplier": 1.0,
+        "preferred_tq_multiplier": 1.0,
+        "parameters": {}
+      },
+      "scaffold_triadic_closure": {
+        "enabled": false,
+        "weight": 1.0,
+        "parameters": {
+          "anchor_probability_cutoff": 0.9,
+          "closure_likelihood": 0.9
+        }
+      }
+    },
+    "edge_integration": {
+      "prior_probability": 0.5,
+      "output_probability_cutoff": 0.5,
+      "penalize_unsupported": false,
+      "unsupported_bayes_factor": 0.5,
+      "continuous_negative_evidence": false,
+      "continuous_bayes_factor_floor": 1e-06
+    },
+    "path": {
+      "enabled": true,
+      "start": "Prkaca",
+      "target": "Aqp2",
+      "top_k": 25,
+      "max_hops": 6,
+      "minimum_edge_probability": 0.5,
+      "ontology_directionality_enabled": true,
+      "omnipath_directionality_enabled": true,
+      "signaling_intermediates_only": true,
+      "exclude_multirole_scaffolds": false,
+      "allowed_intermediate_classes": [
+        "receptor",
+        "receptor_regulator",
+        "ligand",
+        "kinase",
+        "phosphatase",
+        "cyclase",
+        "phosphodiesterase",
+        "phospholipase",
+        "nos",
+        "gtpase",
+        "gtpase_regulator",
+        "kinase_phosphatase_binding",
+        "second_messenger_binding",
+        "signaling_process",
+        "signaling_regulation",
+        "second_messenger"
+      ]
+    },
+    "temporal_validation": {
+      "enabled": false,
+      "prior_df": 4.0,
+      "alpha": 0.05,
+      "monte_carlo_draws": 2000,
+      "random_seed": 0,
+      "p_adjust_method": "within_gene_bonferroni",
+      "minimum_scored_nodes": 3
+    }
+  },
+  "backward_search": {
+    "target": "Aqp2",
+    "receptor": "Avpr2",
+    "cheap_top_n_per_frontier": 20,
+    "beam_width": 5,
+    "maximum_depth": 6,
+    "always_include_receptor": true,
+    "stop_when_receptor_reached": true,
+    "development_mode": true,
+    "huri": {
+      "enabled": false,
+      "interactions_file": "runtime/reference/huri/HuRI.tsv",
+      "mapping_file": "data/edge_characterization/localization/hpa/v25.1/processed/mouse_human_hpa_mapping.tsv",
+      "weight": 1.0,
+      "positive_bayes_factor": 5.0,
+      "nonreported_scope": "neutral",
+      "nonreported_bayes_factor": 0.9,
+      "screened_genes_file": ""
+    },
+    "structural": {
+      "enabled": true,
+      "metric": "iptm",
+      "reference_score": 0.6,
+      "weight": 1.0,
+      "bayes_factor_floor": 0.1,
+      "bayes_factor_ceiling": 10.0,
+      "protocol_id": "alphapulldown_biowulf_v2_model1_cycles3_predictions1_compact",
+      "compatible_protocol_ids": ["legacy_ppi_screen_5models_predictions1"],
+      "num_cycle": 3,
+      "num_predictions_per_model": 1,
+      "model_names": "model_1_multimer_v3",
+      "maximum_concurrent_jobs": 4,
+      "legacy_screen_directory": "../ppi_screen",
+      "legacy_protocol_id": "legacy_ppi_screen_5models_predictions1",
+      "require_legacy_ranked_structure": true
+    }
+  }
+}

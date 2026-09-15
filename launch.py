@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +35,17 @@ FEATURE_IMPORTS = {
     "networkx": "networkx",
     "obonet": "obonet",
 }
+
+
+def evidence_root() -> Path:
+    """Locate the companion data tree without duplicating multi-gigabyte inputs."""
+    explicit = os.environ.get("GBI_EVIDENCE_ROOT", "").strip()
+    candidates = [Path(explicit)] if explicit else []
+    candidates.extend([PROJECT_ROOT, PROJECT_ROOT.parent / "graphical_bayesian_inference"])
+    for candidate in candidates:
+        if (candidate / "data/node_selection/mouse_signaling_nodes_liberal.tsv").is_file():
+            return candidate.resolve()
+    return PROJECT_ROOT
 
 
 def parse_args() -> argparse.Namespace:
@@ -80,15 +92,17 @@ def validate_release() -> dict[str, object]:
         load_registry,
     )
 
-    registry = load_registry(PROJECT_ROOT)
+    source_root = evidence_root()
+    registry = load_registry(source_root)
     config = default_configuration(registry)
-    factors = load_node_factor_catalog(PROJECT_ROOT, registry)
-    universe_path = PROJECT_ROOT / UNIVERSE_RELATIVE
+    factors = load_node_factor_catalog(source_root, registry)
+    universe_path = source_root / UNIVERSE_RELATIVE
     if not universe_path.is_file():
         raise FileNotFoundError(f"Seed universe is missing: {universe_path}")
     return {
         "status": "ok",
         "project_root": str(PROJECT_ROOT),
+        "evidence_root": str(source_root),
         "python": sys.version.split()[0],
         "missing_optional_dependencies": missing_dependencies(FEATURE_IMPORTS),
         "node_streams": len(registry["node_streams"]),
@@ -104,6 +118,8 @@ def validate_release() -> dict[str, object]:
 
 
 def launch(args: argparse.Namespace) -> int:
+    environment = os.environ.copy()
+    environment["GBI_EVIDENCE_ROOT"] = str(evidence_root())
     if args.foreground:
         command = [
             sys.executable,
@@ -128,7 +144,7 @@ def launch(args: argparse.Namespace) -> int:
         ]
         if args.no_browser:
             command.append("--no-browser")
-    return subprocess.call(command, cwd=PROJECT_ROOT)
+    return subprocess.call(command, cwd=PROJECT_ROOT, env=environment)
 
 
 def main() -> int:

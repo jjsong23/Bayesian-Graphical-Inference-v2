@@ -4,6 +4,92 @@ This file summarizes user-visible and scientifically meaningful code changes.
 The canonical takeover instructions remain in `CODEX_PROJECT_CONTEXT.md`; dated
 implementation detail is retained under `docs/lab_notebook/`.
 
+## 2026-09-15
+
+### Compact structural screening and reference-interactome evidence
+
+- Restricted new AlphaPulldown work to one total model prediction per pair:
+  one prediction from `model_1_multimer_v3`.
+- Moved each GPU task's heavy model output to node-local `$LSCRATCH`; only the
+  validated ipTM table, top PDB, small metadata, and task manifest persist.
+- Isolated feature/MSA objects by search run and added post-frontier cleanup
+  that retains only next-frontier features and records every deletion/byte.
+- Added validation and compact SQLite import for the earlier `ppi_screen`.
+  Low ipTM values are retained, a nonempty top PDB is required, duplicates are
+  audited, and the five-model legacy protocol remains distinctly labeled.
+- Added exact-protocol-first structural cache lookup with explicit compatible
+  protocol fallbacks and source/protocol provenance in the edge ledger.
+- Added optional HuRI binary interaction evidence mapped from human Ensembl to
+  mouse symbols. Reported pairs support edges; non-reporting is neutral by
+  default and can become only a scoped, configurable weak negative assumption.
+- Added Biowulf helpers to fetch HuRI, submit the legacy-screen import, and
+  fast-forward an existing checkout from GitHub without touching ignored data.
+- Added regression tests for prediction count, feature cleanup, legacy cache
+  compatibility/validation, low-score retention, and HuRI non-report scoping.
+
+## 2026-09-14
+
+### Version 2 complete-pipeline workbench
+
+- Connected the existing configurable node-selection engine directly to the
+  Version 2 backward frontier search; a Version 2 run now begins with raw
+  registered node evidence rather than a manually exported node universe.
+- Added an exact handoff for all enabled inexpensive edge streams that preserves
+  their Tq/reference controls, weights, and scope-aware negative evidence while
+  avoiding a second application of the weight.
+- Added target/receptor resolution, directionality export, sequence preparation,
+  a Version 2-local persistent pair cache, and saved pipeline-level state.
+- Added complete-pipeline CLI commands for configuration, initialization,
+  single-stage execution, run-to-checkpoint, Biowulf submission, structural
+  collection, status, and trace generation.
+- Added a dedicated minimal GUI at `/v2.html` exposing all registered node and
+  edge datasets and the complete initialize/step/submit/collect lifecycle.
+- Deferred sequence validation until after cheap shortlist selection so an
+  unmapped protein that is never submitted cannot block an otherwise valid run.
+- Corrected the Biowulf submission manifest to contain real tab separators.
+- Replaced repeated multi-gigabyte incremental-cache scans with indexed bulk
+  pair lookup and isolated Version 2's writable incremental and structural
+  caches under its ignored `runtime/` directory.
+
+### Version 2 stepwise development inference
+
+- Added an optional development state machine that advances exactly one
+  auditable decision per command while preserving the production search's
+  Bayesian equations, structural transformation, ranking, and pruning rules.
+- Added complete candidate-enumeration, cheap-evidence, shortlist,
+  structural-cache, combined-evidence, and frontier keep/reject ledgers.
+- Added an append-only JSONL event history and a continuously refreshed,
+  self-contained HTML trace showing the current frontier, next action, stage
+  counts, and linked table previews.
+- Added explicit structural import checkpoints: partial results remain waiting,
+  and complete imports pause before Bayesian integration so raw scores can be
+  inspected first.
+- Added CLI controls (`init --development` and `trace`) and synthetic regression
+  coverage for every stage through the first frontier transition.
+
+## 2026-09-11
+
+### Version 2 backward frontier inference
+
+- Added a resumable backward beam search that evaluates cheap pair evidence
+  only at the active frontier, retains 20 candidates per partial path, and
+  globally retains five distinct upstream frontier nodes after structural
+  rescoring.
+- Added an auditable heuristic conversion from raw ipTM to a bounded structural
+  BF, including negative support below a configurable reference score, while
+  preserving raw scores separately from weights and transformation settings.
+- Added a persistent SQLite pair cache, atomic run state, per-round candidate
+  and pair manifests, loop prevention, signaling-role filtering, direction-aware
+  backward traversal, and receptor/maximum-depth termination.
+- Added portable preparation commands for audited node-symbol FASTA generation
+  and for appending an external endpoint's HPA vector to the internal HPA pair
+  catalog without reading or constructing a complete square adjacency matrix.
+- Added portable NIH Biowulf Slurm scripts for cached AlphaPulldown feature
+  generation, one exact pair per one-GPU array task, ipTM collection, and
+  pause/import/resume operation without any AI assistant or API dependency.
+- Added a complete design/methods plan, example configuration, root CLI entry
+  point, and synthetic end-to-end tests of two-round search and cache reuse.
+
 ## 2026-09-10
 
 ### Visual evidence and calibration transparency

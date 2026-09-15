@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Graphical Bayesian Inference — Version 2</title>
+  <link rel="stylesheet" href="v2.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Graphical Bayesian Inference</p>
+        <h1>Backward frontier pipeline</h1>
+        <p class="lede">Run node selection, inexpensive edge evidence, AlphaPulldown checkpoints, and backward path expansion as one saved, inspectable analysis.</p>
+      </div>
+      <a class="quiet-link" href="/">Open Version 1</a>
+    </header>
+
+    <div id="notice" class="notice hidden" role="alert"></div>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><span class="step">1</span><h2>Define the search</h2></div>
+        <p>Every setting is saved with the run.</p>
+      </div>
+      <div class="grid four">
+        <label>Target<input id="target" value="Aqp2"></label>
+        <label>Receptor<input id="receptor" value="Avpr2"></label>
+        <label>Cheap shortlist<input id="cheapTopN" type="number" min="1"></label>
+        <label>Frontier width<input id="beamWidth" type="number" min="1"></label>
+        <label>Maximum depth<input id="maximumDepth" type="number" min="1"></label>
+        <label>Structural Tq<input id="structuralTq" type="number" min="0.000001" max="0.999999" step="0.01"></label>
+        <label>Structural weight<input id="structuralWeight" type="number" min="0" step="0.1"></label>
+        <label>Concurrent GPU jobs<input id="gpuJobs" type="number" min="1"></label>
+      </div>
+      <div class="checks">
+        <label><input id="developmentMode" type="checkbox"> Pause after each auditable decision</label>
+        <label><input id="structuralEnabled" type="checkbox"> Use AlphaPulldown</label>
+        <label><input id="alwaysReceptor" type="checkbox"> Always test receptor</label>
+        <label><input id="stopAtReceptor" type="checkbox"> Stop paths at receptor</label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><span class="step">2</span><h2>Optional evidence calibration</h2></div><p>Fit weights and Tq values to known-present controls with regularization.</p></div>
+      <div class="checks"><label><input id="calibrationEnabled" type="checkbox"> Calibrate enabled evidence streams before inference</label></div>
+      <div class="grid four compact">
+        <label class="wide">Known nodes, one per line<textarea id="knownNodes" rows="4" placeholder="Aqp2"></textarea></label>
+        <label class="wide">Known edges, one pair per line<textarea id="knownEdges" rows="4" placeholder="Avpr2, Gnas"></textarea></label>
+        <label>Regularization strength<input id="regularization" type="number" min="0" step="0.05"></label>
+        <label>Optimizer starts<input id="multistart" type="number" min="1"></label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><span class="step">3</span><h2>Select nodes</h2></div><p>Posterior odds begin at the prior and receive each enabled BF<sup>weight</sup>.</p></div>
+      <div class="grid four compact">
+        <label>Node prior<input id="nodePrior" type="number" min="0" max="1" step="0.01"></label>
+        <label>Selection cutoff<input id="nodeCutoff" type="number" min="0" max="1" step="0.01"></label>
+        <label>Absent-node BF<input id="nodeMissingBf" type="number" min="0.000001" max="1" step="0.05"></label>
+        <label>Continuous BF floor<input id="nodeFloor" type="number" min="0.000001" max="1" step="0.01"></label>
+      </div>
+      <div class="checks">
+        <label><input id="includeMessengers" type="checkbox"> Include second messengers</label>
+        <label><input id="penalizeNodes" type="checkbox"> Penalize eligible nondetections</label>
+        <label><input id="continuousNodes" type="checkbox"> Allow weak/zero measurements to produce BF &lt; 1</label>
+      </div>
+      <div id="nodeStreams" class="stream-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><span class="step">4</span><h2>Characterize cheap edges</h2></div><p>Only enabled inexpensive sources screen candidates before structural prediction.</p></div>
+      <div class="grid four compact">
+        <label>Edge prior<input id="edgePrior" type="number" min="0" max="1" step="0.01"></label>
+        <label>Edge output cutoff<input id="edgeCutoff" type="number" min="0" max="1" step="0.01"></label>
+        <label>Unsupported-edge BF<input id="edgeMissingBf" type="number" min="0.000001" max="1" step="0.05"></label>
+        <label>Continuous BF floor<input id="edgeFloor" type="number" min="0.000001" max="1" step="0.01"></label>
+      </div>
+      <div class="checks">
+        <label><input id="penalizeEdges" type="checkbox"> Penalize eligible unsupported pairs</label>
+        <label><input id="continuousEdges" type="checkbox"> Allow weak/zero scores to produce BF &lt; 1</label>
+        <label><input id="ontologyDirections" type="checkbox"> Apply ontology traversal rules</label>
+        <label><input id="omnipathDirections" type="checkbox"> Apply OmniPath directions</label>
+      </div>
+      <div id="edgeStreams" class="stream-list"></div>
+      <div class="reference-evidence">
+        <div class="checks">
+          <label><input id="huriEnabled" type="checkbox"> Use HuRI experimentally detected binary PPIs</label>
+        </div>
+        <div class="grid four compact">
+          <label>HuRI weight<input id="huriWeight" type="number" min="0" max="10" step="0.1"></label>
+          <label>Reported-pair BF<input id="huriPositiveBf" type="number" min="1.000001" step="0.5"></label>
+          <label>Unreported-pair rule
+            <select id="huriNonreportScope">
+              <option value="neutral">Neutral (recommended)</option>
+              <option value="huri_interactor_set">Weak negative if both occur in HuRI</option>
+              <option value="screened_gene_file">Weak negative using supplied testable-gene file</option>
+            </select>
+          </label>
+          <label>Unreported-pair BF<input id="huriNegativeBf" type="number" min="0.000001" max="1" step="0.05"></label>
+          <label class="wide">HuRI.tsv path<input id="huriInteractionsFile" type="text"></label>
+          <label class="wide">Optional screened-gene file<input id="huriScreenedGenesFile" type="text" placeholder="Required only for supplied-file scope"></label>
+        </div>
+        <p class="muted">HuRI publishes detected pairs, not a complete pair-level list of failed tests. The neutral rule is safest; either weak-negative rule is an explicit assumption and remains visible in the run audit.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading"><div><span class="step">5</span><h2>Allowed relay classes</h2></div><p>A path may traverse any selected class below. Endpoints remain allowed.</p></div>
+      <div id="ontologyClasses" class="ontology-grid"></div>
+    </section>
+
+    <section class="panel action-panel">
+      <div>
+        <h2>Run the complete pipeline</h2>
+        <p id="dataRoot" class="muted"></p>
+      </div>
+      <button id="initialize" class="primary">Initialize complete run</button>
+    </section>
+
+    <section id="runPanel" class="panel hidden">
+      <div class="panel-heading"><div><span class="step">6</span><h2>Saved run</h2></div><p id="runId"></p></div>
+      <div class="status-row">
+        <div><span>Status</span><strong id="status">—</strong></div>
+        <div><span>Operation</span><strong id="operation">—</strong></div>
+        <div><span>Round</span><strong id="round">—</strong></div>
+        <div><span>Selected nodes</span><strong id="selectedNodes">—</strong></div>
+        <div><span>Pending pairs</span><strong id="pendingPairs">—</strong></div>
+        <div><span>Solutions</span><strong id="solutions">—</strong></div>
+      </div>
+      <div class="progress"><div id="progressBar"></div></div>
+      <p id="message" class="run-message"></p>
+      <div class="actions">
+        <button data-action="step">One decision</button>
+        <button data-action="advance" class="primary">Run to checkpoint</button>
+        <button data-action="submit">Submit AlphaPulldown</button>
+        <button data-action="collect">Collect + continue</button>
+        <button data-action="trace">Refresh trace</button>
+        <button data-action="cancel" class="danger">Cancel active work</button>
+      </div>
+      <div class="downloads">
+        <a id="traceLink" target="_blank">Open stepwise trace</a>
+        <a id="nodesLink">Selected nodes</a>
+        <a id="stateLink">Pipeline state</a>
+        <a id="configLink">Saved configuration</a>
+      </div>
+      <div class="checkpoint-note">
+        <strong>How this runs:</strong> “Run to checkpoint” performs every available local stage. If structural predictions are required, it pauses with a reproducible AlphaPulldown round. On Biowulf, “Submit AlphaPulldown” sends the Slurm arrays; after they finish, “Collect + continue” imports scores and proceeds to the next checkpoint or completion.
+      </div>
+    </section>
+  </main>
+  <script src="v2.js"></script>
+</body>
+</html>
