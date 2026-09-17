@@ -4,6 +4,19 @@ This file summarizes user-visible and scientifically meaningful code changes.
 The canonical takeover instructions remain in `CODEX_PROJECT_CONTEXT.md`; dated
 implementation detail is retained under `docs/lab_notebook/`.
 
+## 2026-09-17
+
+### Auditable reduced-database feature regeneration
+
+- Added an explicit `GBI_DB_PRESET` switch for AlphaPulldown feature jobs,
+  restricted to `full_dbs` or `reduced_dbs`.
+- Recorded the chosen preset and feature directory in each round's
+  `feature_protocol.tsv` and in every compact structural prediction manifest.
+- Documented a recoverable whole-round regeneration procedure for HH-suite
+  `MergeMasterSlave` failures. It moves the incomplete full-database feature
+  directory to `/scratch` before resubmission, preventing mixed feature
+  protocols when AlphaPulldown's `--skip_existing` option is active.
+
 ## 2026-09-15
 
 ### Compact structural screening and reference-interactome evidence

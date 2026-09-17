@@ -10,6 +10,7 @@ module load alphapulldown
 : "${GBI_NUM_CYCLE:=3}"
 : "${GBI_NUM_PREDICTIONS:=1}"
 : "${GBI_MODEL_NAMES:=model_1_multimer_v3}"
+: "${GBI_DB_PRESET:=full_dbs}"
 
 manifest="$GBI_ROUND_DIR/pairs.tsv"
 record=$(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" "$manifest")
@@ -71,6 +72,7 @@ for artifact_name in ranking_debug.json timings.json; do
     cp -f "$artifact" "$compact_output/$artifact_name"
   fi
 done
-printf 'pair_id\tnode_a\tnode_b\tmodel_names\tnum_cycle\tnum_predictions_per_model\tscratch_job_id\n%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+printf 'pair_id\tnode_a\tnode_b\tmodel_names\tnum_cycle\tnum_predictions_per_model\tfeature_db_preset\tscratch_job_id\n%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$pair_id" "$node_a" "$node_b" "$GBI_MODEL_NAMES" "$GBI_NUM_CYCLE" \
-  "$GBI_NUM_PREDICTIONS" "$SLURM_JOB_ID" > "$compact_output/prediction_manifest.tsv"
+  "$GBI_NUM_PREDICTIONS" "$GBI_DB_PRESET" "$SLURM_JOB_ID" \
+  > "$compact_output/prediction_manifest.tsv"

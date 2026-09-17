@@ -182,6 +182,10 @@ Operational notes:
   `GBI_MAX_CONCURRENT_GPU_JOBS` before submission to change concurrency.
 - Set `GBI_ALPHAFOLD_DATA_DIR` if the installed module requires an explicit
   database path.
+- Set `GBI_DB_PRESET` to `full_dbs` (the default) or `reduced_dbs`. The selected
+  preset is passed to AlphaPulldown, written to `feature_protocol.tsv`, and
+  repeated in every compact pair manifest so the feature protocol remains
+  auditable.
 - Set `GBI_MAX_TEMPLATE_DATE` to the scientifically intended cutoff. The
   default is the Version 2 implementation date (`2026-09-11`) so reruns do not
   silently use later templates.
@@ -189,6 +193,34 @@ Operational notes:
   Failed analyses are listed in `collection_summary.json` and are not imputed.
 - FASTA identifiers are restricted to letters, digits, period, underscore, and
   hyphen so they can be passed safely through the batch scripts.
+
+### Recovering from an HH-suite full-database feature failure
+
+Some proteins can make HH-suite's full-database search fail with a
+`MergeMasterSlave` match-state error. Do not exclude the protein and do not let
+the dependent GPU array proceed with an incomplete feature set. Cancel both
+arrays, move the run-private feature directory to `/scratch`, and regenerate
+the entire round with one consistent reduced-database protocol:
+
+```bash
+RUN=runs/RUN_ID
+ROUND="$RUN/backward_search/round_000"
+OLD_FEATURES="$RUN/backward_search/features"
+BACKUP="/scratch/$USER/gbi_v2_feature_backups/RUN_ID_full_dbs_$(date +%Y%m%d_%H%M%S)"
+
+scancel FEATURE_JOB_ID PREDICTION_JOB_ID
+mkdir -p "$(dirname "$BACKUP")"
+mv -- "$OLD_FEATURES" "$BACKUP"
+
+GBI_DB_PRESET=reduced_dbs \
+GBI_MAX_CONCURRENT_GPU_JOBS=4 \
+bash biowulf/submit_round.sh "$ROUND"
+```
+
+Replace all placeholders with the run and job IDs printed by the GUI. Moving
+the old directory is deliberate: `--skip_existing=True` must not silently mix
+full- and reduced-database feature objects. The old features remain recoverable
+in `/scratch` while the replacement jobs run.
 
 ## 5. Compact structural storage policy
 

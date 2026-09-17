@@ -17,6 +17,15 @@ search_dir=$(dirname "$round_dir")
 feature_dir="${GBI_FEATURE_DIR:-$search_dir/features}"
 max_template_date="${GBI_MAX_TEMPLATE_DATE:-2026-09-11}"
 max_parallel="${GBI_MAX_CONCURRENT_GPU_JOBS:-10}"
+db_preset="${GBI_DB_PRESET:-full_dbs}"
+
+case "$db_preset" in
+  full_dbs|reduced_dbs) ;;
+  *)
+    echo "GBI_DB_PRESET must be full_dbs or reduced_dbs (received: $db_preset)" >&2
+    exit 2
+    ;;
+esac
 
 mkdir -p "$round_dir/logs" "$feature_dir"
 sequence_count=$(grep -c '^>' "$round_dir/sequences.fasta")
@@ -30,13 +39,17 @@ num_cycle=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["num
 num_predictions=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["num_predictions_per_model"])' "$round_dir/round_config.json")
 model_names=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["model_names"])' "$round_dir/round_config.json")
 
+printf 'key\tvalue\ndb_preset\t%s\nfeature_directory\t%s\nmax_template_date\t%s\nsequence_count\t%s\n' \
+  "$db_preset" "$feature_dir" "$max_template_date" "$sequence_count" \
+  > "$round_dir/feature_protocol.tsv"
+
 feature_job=$(sbatch --parsable \
   --job-name=gbi_features \
   --cpus-per-task=8 --mem=50g --time=10:00:00 \
   --array="1-${sequence_count}%10" \
   --output="$round_dir/logs/features_%A_%a.out" \
   --error="$round_dir/logs/features_%A_%a.err" \
-  --export="ALL,GBI_SEQUENCE_FASTA=$round_dir/sequences.fasta,GBI_FEATURE_DIR=$feature_dir,GBI_MAX_TEMPLATE_DATE=$max_template_date,GBI_ALPHAFOLD_DATA_DIR=${GBI_ALPHAFOLD_DATA_DIR:-}" \
+  --export="ALL,GBI_SEQUENCE_FASTA=$round_dir/sequences.fasta,GBI_FEATURE_DIR=$feature_dir,GBI_MAX_TEMPLATE_DATE=$max_template_date,GBI_DB_PRESET=$db_preset,GBI_ALPHAFOLD_DATA_DIR=${GBI_ALPHAFOLD_DATA_DIR:-}" \
   "$repo_root/biowulf/run_features.sbatch")
 
 prediction_job=$(sbatch --parsable \
@@ -47,7 +60,7 @@ prediction_job=$(sbatch --parsable \
   --array="1-${pair_count}%${max_parallel}" \
   --output="$round_dir/logs/pairs_%A_%a.out" \
   --error="$round_dir/logs/pairs_%A_%a.err" \
-  --export="ALL,GBI_ROUND_DIR=$round_dir,GBI_FEATURE_DIR=$feature_dir,GBI_NUM_CYCLE=$num_cycle,GBI_NUM_PREDICTIONS=$num_predictions,GBI_MODEL_NAMES=$model_names" \
+  --export="ALL,GBI_ROUND_DIR=$round_dir,GBI_FEATURE_DIR=$feature_dir,GBI_DB_PRESET=$db_preset,GBI_NUM_CYCLE=$num_cycle,GBI_NUM_PREDICTIONS=$num_predictions,GBI_MODEL_NAMES=$model_names" \
   "$repo_root/biowulf/run_pairs.sbatch")
 
 printf 'stage\tjob_id\nfeatures\t%s\npredictions\t%s\n' \
@@ -55,6 +68,7 @@ printf 'stage\tjob_id\nfeatures\t%s\npredictions\t%s\n' \
 
 echo "Feature job: $feature_job"
 echo "Prediction job: $prediction_job"
+echo "Feature database preset: $db_preset"
 echo "After prediction completes:"
 echo "  python dynamic_search.py collect --run-dir $(dirname "$round_dir")"
 echo "  python dynamic_search.py step --run-dir $(dirname "$round_dir")"
