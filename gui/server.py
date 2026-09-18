@@ -43,6 +43,7 @@ from backward_search.pipeline import (  # noqa: E402
     step_pipeline,
     submit_pipeline_structural_round,
 )
+from backward_search.development import development_graph_payload  # noqa: E402
 
 
 WEB_ROOT = Path(__file__).resolve().parent / "web"
@@ -149,7 +150,11 @@ def recover_v2_job(job_id: str) -> V2Job | None:
         job_id=job_id,
         status=str(state.get("status", "ready")),
         operation="idle",
-        message="Recovered saved pipeline",
+        message=(
+            "Recovered failed pipeline; correct the input and initialize a new run"
+            if state.get("status") == "failed"
+            else "Recovered saved pipeline"
+        ),
         progress=1.0,
         pipeline=state,
         error=state.get("error"),
@@ -379,6 +384,24 @@ class WorkbenchHandler(BaseHTTPRequestHandler):
                         except Exception as exc:  # noqa: BLE001
                             job.error = str(exc)
                     self.send_json(public_v2_job(job))
+                return
+            if len(parts) == 5 and parts[4] == "frontier":
+                job = recover_v2_job(parts[3])
+                if job is None:
+                    self.send_json({"error": "Version 2 run not found"}, HTTPStatus.NOT_FOUND)
+                    return
+                search_run = job.run_directory / "backward_search"
+                try:
+                    self.send_json(development_graph_payload(search_run))
+                except FileNotFoundError:
+                    self.send_json({
+                        "available": False,
+                        "stage": "initialize",
+                        "sources": [],
+                        "message": "The backward frontier has not been initialized yet.",
+                    })
+                except (ValueError, KeyError) as exc:
+                    self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 return
             if len(parts) == 6 and parts[4] == "files":
                 self.send_v2_file(parts[3], parts[5])

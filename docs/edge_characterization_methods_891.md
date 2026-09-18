@@ -344,11 +344,11 @@ small-molecule factor. This null coverage audit is preserved under
 
 ## Optional derived stream: scaffold-mediated triadic closure
 
-An optional second-pass stream was implemented to represent the hypothesis that
-two proteins strongly associated with the same scaffold are more likely to
+An optional second-pass stream represents the hypothesis that two proteins
+with physically supported interactions to the same scaffold are more likely to
 occupy the same signaling complex or local microenvironment. This is a
-scaffold-specific proximity inference; it is not interpreted as proof of a
-direct binary physical interaction.
+scaffold-specific proximity inference; it is not interpreted as proof that the
+two inferred partner proteins bind each other directly.
 
 The biological rationale is that multivalent scaffold proteins can nucleate
 signaling complexes and increase partner proximity
@@ -359,16 +359,20 @@ degree-corrected network-link predictor.
 The operation uses only protein nodes. A common-neighbor node qualifies as a
 scaffold when its semicolon-delimited node classes contain the exact
 `adaptor_scaffold` token. Multi-role scaffold proteins remain eligible. For
-proteins (i) and (j), scaffold (s), and pre-closure edge probability (P), the
-pair qualifies exactly when:
+proteins (i) and (j), scaffold (s), and a physical anchor score (A), the pair
+qualifies exactly when:
 
 $$
-\exists s:\quad P_{is}>c\ \land\ P_{js}>c.
+\exists s:\quad A_{is}>c\ \land\ A_{js}>c.
 $$
 
-The default cutoff is (c=0.90), exposed as `Anchor >`; an edge exactly at
-0.90 does not qualify. Scaffold degree, the amount by which an anchor exceeds
-0.90, and the number of shared scaffolds do not alter the assigned evidence.
+The only permitted anchors are accepted-protocol AlphaPulldown/AlphaFold scores
+or reported-positive HuRI interactions. The default AlphaPulldown/AlphaFold
+cutoff is (c=0.90), exposed as `Anchor >`; a score exactly at 0.90 does not
+qualify. A reported-positive HuRI pair qualifies directly. Localization,
+STRING, OmniPath, kinase prediction, STITCH, and the integrated cheap-edge
+posterior cannot populate (A). Scaffold degree, the amount by which an anchor
+exceeds 0.90, and the number of shared scaffolds do not alter the assigned evidence.
 Every qualifying pair receives the support likelihood (L=0.90), exposed as
 `Support L`. Relative to the neutral likelihood of 0.50, the stored factor is:
 
@@ -383,23 +387,12 @@ never reused as an anchor, preventing recursive graph densification. There is
 no empirical (T_q), degree penalty, continuous shared-scaffold score, or
 noisy-OR aggregation.
 
-This stream is disabled by default because it is structurally derived from the
-already selected edge streams and therefore is not statistically independent.
-In the default 891-node validation graph, enabling it with (c=0.90), support
-likelihood 0.90, and weight one produced:
-
-- 195 scaffold-class protein nodes, of which 193 had at least two anchors;
-- 14,308 strong protein-scaffold anchor associations;
-- 205,920 protein pairs sharing at least one qualifying scaffold;
-- 205,920 qualifying pairs assigned BF 1.8;
-- 81,323 pairs newly raised above the 0.5 output cutoff; and
-- 250,737 total pairs above 0.5, versus 169,414 before closure.
-
-The complete audit includes every qualifying pair's supporting-scaffold list,
-shared-scaffold count, fixed likelihood and Bayes factor, and pre/post
-probability. It is written per run as
-`scaffold_triadic_closure_audit.tsv.gz`. The revised fixed validation run is
-stored at `results/gui_runs/scaffold_binary_closure_validation_20260804_v2/`.
+The Version 2 frontier recalculates this rule from its persistent physical-pair
+cache. The audit retains every qualifying pair's shared-scaffold list, fixed
+likelihood/BF, and both anchor sources/protocols. The older validation under
+`results/gui_runs/scaffold_binary_closure_validation_20260804_v2/` used the
+general integrated edge posterior as (P) and is now historical/superseded; its
+counts are not results of the physical-only method.
 
 ## Validation and backend storage
 

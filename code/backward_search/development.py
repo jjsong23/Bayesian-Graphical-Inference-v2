@@ -33,13 +33,16 @@ from .engine import (
     _write_state,
     cached_evidence_factor,
     cached_structural_result,
+    build_physical_scaffold_closure_index,
     canonical_pair,
     cleanup_run_features,
     load_run_state,
     load_stream_scopes,
+    physical_scaffold_closure_factor,
     stable_expit,
     stable_logit,
     structural_bayes_factor,
+    structural_substitute_stream,
     utc_now,
 )
 
@@ -57,6 +60,14 @@ NEXT_STAGE_LABELS = {
 
 def _truthy(value: Any) -> bool:
     return str(value).strip().casefold() in {"1", "true", "yes", "y"}
+
+
+def _semicolon_tuple(value: Any) -> tuple[str, ...]:
+    if value is None or (not isinstance(value, (list, tuple)) and pd.isna(value)):
+        return ()
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item) for item in value if str(item).strip())
+    return tuple(item for item in str(value).split(";") if item)
 
 
 def _round_file(run_dir: Path, state: dict[str, Any], name: str) -> Path:
@@ -136,6 +147,271 @@ def _table_preview(path: Path, limit: int = 20) -> str:
         f"<div class='table-wrap'><table><thead><tr>{headings}</tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div>"
     )
+
+
+def _candidate_key(record: dict[str, Any]) -> str:
+    return (
+        f"{record.get('path_id', '')}|{record.get('current_node', '')}|"
+        f"{record.get('candidate_parent', '')}"
+    )
+
+
+def _optional_records(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    try:
+        return _read_table(path).to_dict("records")
+    except Exception:
+        # A GPU task may be replacing a file while the live GUI refreshes.
+        return []
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _live_pair_scores(round_dir: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    pairs = _optional_records(round_dir / "pairs.tsv")
+    output: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in pairs:
+        pair_id = str(row.get("pair_id", ""))
+        pair = canonical_pair(str(row.get("node_a", "")), str(row.get("node_b", "")))
+        score_file = round_dir / "models" / pair_id / "predictions_with_good_interpae.csv"
+        score: float | None = None
+        if score_file.is_file():
+            try:
+                frame = pd.read_csv(score_file)
+                columns = {str(column).strip().casefold(): column for column in frame.columns}
+                iptm = columns.get("iptm")
+                if iptm is not None:
+                    values = pd.to_numeric(frame[iptm], errors="coerce").dropna()
+                    if not values.empty:
+                        score = float(values.max())
+            except Exception:
+                score = None
+        output[pair] = {
+            "pair_id": pair_id,
+            "score": score,
+            "source_file": str(score_file) if score is not None else "",
+        }
+    return output
+
+
+def development_graph_payload(run_dir: Path, display_limit: int = 20) -> dict[str, Any]:
+    """Return a compact live frontier graph with exact evidence provenance."""
+    run_dir = run_dir.resolve()
+    state = load_run_state(run_dir)
+    configuration = state["configuration"]
+    scored_rounds = [
+        directory for directory in sorted(run_dir.glob("round_[0-9][0-9][0-9]"))
+        if (directory / "cheap_scored_all.tsv").is_file()
+    ]
+    if not scored_rounds:
+        return {
+            "available": False,
+            "stage": state.get("development_stage", ""),
+            "round": int(state.get("round", 0)),
+            "message": "Cheap evidence has not yet been scored for this frontier.",
+            "sources": [],
+        }
+    round_dir = scored_rounds[-1]
+    round_number = int(round_dir.name.rsplit("_", 1)[-1])
+    cheap_rows = _optional_records(round_dir / "cheap_scored_all.tsv")
+    selection_rows = {
+        _candidate_key(row): row
+        for row in _optional_records(round_dir / "cheap_selection.tsv")
+    }
+    lookup_rows = {
+        _candidate_key(row): row
+        for row in _optional_records(round_dir / "structural_cache_lookup.tsv")
+    }
+    integrated_rows = {
+        _candidate_key(row): row
+        for row in _optional_records(round_dir / "scored_candidates.tsv")
+    }
+    decision_rows = {
+        _candidate_key(row): row
+        for row in _optional_records(round_dir / "frontier_selection.tsv")
+    }
+    live_scores = _live_pair_scores(round_dir)
+    structural = configuration["structural"]
+    streams = list(configuration["cheap_streams"])
+    top_n = min(max(1, int(display_limit)), int(configuration["cheap_top_n_per_frontier"]))
+
+    metadata: dict[str, dict[str, str]] = {}
+    try:
+        node_path = Path(configuration["node_table"])
+        if not node_path.is_absolute():
+            node_path = Path(configuration["project_root"]) / node_path
+        nodes = _read_table(node_path)
+        symbol_column = configuration["symbol_column"]
+        for row in nodes.to_dict("records"):
+            symbol = str(row.get(symbol_column, ""))
+            metadata[symbol] = {
+                "name": str(row.get("name", row.get("node_name", ""))),
+                "classes": str(row.get(configuration["classes_column"], "")),
+            }
+    except Exception:
+        metadata = {}
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in cheap_rows:
+        rank = int(float(row.get("cheap_rank_within_frontier", 10**9)))
+        key = _candidate_key(row)
+        selection = selection_rows.get(key)
+        forced = bool(
+            selection
+            and str(selection.get("selection_reason", "")) == "forced_receptor_safety_rule"
+        )
+        selected = (
+            _truthy(selection.get("selected_for_structural_stage", ""))
+            if selection is not None else rank <= top_n
+        )
+        if not selected or (rank > top_n and not forced):
+            continue
+        current = str(row["current_node"])
+        parent = str(row["candidate_parent"])
+        pair = canonical_pair(current, parent)
+        substitute = str(row.get("structural_substitute", ""))
+        structural_required = _truthy(row.get("structural_required", ""))
+        lookup = lookup_rows.get(key, {})
+        integrated = integrated_rows.get(key, {})
+        decision = decision_rows.get(key, {})
+        live = live_scores.get(pair, {})
+        raw_score = _finite_float(integrated.get("structural_score"))
+        if raw_score is None:
+            raw_score = _finite_float(lookup.get("cached_raw_score"))
+        if raw_score is None:
+            raw_score = _finite_float(live.get("score"))
+        structural_factor = _finite_float(integrated.get("structural_bayes_factor"))
+        if structural_factor is None and raw_score is not None:
+            structural_factor = structural_bayes_factor(
+                raw_score,
+                float(structural["reference_score"]),
+                float(structural["bayes_factor_floor"]),
+                float(structural["bayes_factor_ceiling"]),
+            )
+        cheap_probability = float(row["cheap_probability"])
+        cheap_log_odds = float(row["cheap_log_odds"])
+        combined_probability = _finite_float(integrated.get("combined_edge_probability"))
+        if combined_probability is None and structural_factor is not None:
+            combined_probability = stable_expit(
+                cheap_log_odds + float(structural["weight"]) * math.log(structural_factor)
+            )
+        evidence = []
+        closure_scaffolds = _semicolon_tuple(
+            row.get("closure_supporting_scaffolds", "")
+        )
+        closure_sources = _semicolon_tuple(row.get("closure_anchor_sources", ""))
+        for stream in streams:
+            stream_id = str(stream["id"])
+            factor = _finite_float(row.get(f"bf_{stream_id}"))
+            if factor is None:
+                continue
+            weighted_log_bf = float(stream["weight"]) * math.log(factor)
+            evidence_item = {
+                "id": stream_id,
+                "label": stream_id.replace("_", " "),
+                "factor": factor,
+                "weight": float(stream["weight"]),
+                "weighted_log_bf": weighted_log_bf,
+                "effect": "supports" if factor > 1.0 else "refutes" if factor < 1.0 else "neutral",
+            }
+            if stream.get("derived_handler") == "physical_scaffold_closure":
+                evidence_item["supporting_scaffolds"] = list(closure_scaffolds)
+                evidence_item["physical_anchor_sources"] = list(closure_sources)
+            evidence.append(evidence_item)
+        evidence.sort(key=lambda item: (-abs(item["weighted_log_bf"]), item["id"]))
+        if substitute:
+            structural_status = "huri_substitute"
+            structural_text = "Verified HuRI positive; AlphaPulldown skipped to avoid redundant evidence."
+        elif not structural_required:
+            structural_status = "not_applicable"
+            structural_text = "Structural prediction is not applicable to this pair."
+        elif integrated:
+            structural_status = "integrated"
+            structural_text = f"AlphaPulldown integrated (ipTM {raw_score:.3f})."
+        elif raw_score is not None:
+            structural_status = "completed_uncollected"
+            structural_text = f"AlphaPulldown finished (ipTM {raw_score:.3f}); awaiting collection."
+        elif str(lookup.get("cache_status", "")) == "hit":
+            structural_status = "cached"
+            structural_text = "A compatible cached AlphaPulldown result is ready."
+        else:
+            structural_status = "pending"
+            structural_text = "AlphaPulldown result is pending."
+        retained: bool | None = None
+        decision_reason = ""
+        if decision:
+            retained = _truthy(decision.get("retained_for_next_frontier", ""))
+            decision_reason = str(decision.get("decision_reason", ""))
+        strongest = evidence[0] if evidence else None
+        interpretation = f"Cheap evidence gives P(edge)={cheap_probability:.3f}. "
+        if strongest is not None:
+            interpretation += (
+                f"Largest contribution: {strongest['label']} "
+                f"({strongest['effect']}, BF={strongest['factor']:.3g}). "
+            )
+        if closure_scaffolds:
+            interpretation += (
+                "Physical scaffold closure is supported through "
+                + ", ".join(closure_scaffolds)
+                + "; each anchor is an accepted AlphaPulldown/AlphaFold result "
+                "or reported-positive HuRI interaction. "
+            )
+        interpretation += structural_text
+        if retained is True:
+            interpretation += " Retained in the next frontier after combined-evidence ranking."
+        elif retained is False:
+            interpretation += " Culled after combined-evidence ranking."
+        grouped.setdefault(str(row["path_id"]), []).append({
+            "candidate_key": key,
+            "rank": rank,
+            "source": current,
+            "symbol": parent,
+            "name": metadata.get(parent, {}).get("name", ""),
+            "classes": metadata.get(parent, {}).get("classes", ""),
+            "forced_receptor": forced,
+            "cheap_probability": cheap_probability,
+            "combined_probability": combined_probability,
+            "structural_required": structural_required,
+            "structural_substitute": substitute,
+            "structural_status": structural_status,
+            "structural_score": raw_score,
+            "structural_bayes_factor": structural_factor,
+            "pair_id": str(live.get("pair_id", "")),
+            "retained": retained,
+            "decision_reason": decision_reason,
+            "evidence": evidence,
+            "closure_supporting_scaffolds": list(closure_scaffolds),
+            "closure_anchor_sources": list(closure_sources),
+            "interpretation": interpretation,
+        })
+    sources = []
+    for path_id, candidates in grouped.items():
+        candidates.sort(key=lambda item: (item["rank"], item["symbol"].casefold()))
+        sources.append({
+            "path_id": path_id,
+            "source": candidates[0]["source"] if candidates else "",
+            "candidates": candidates,
+        })
+    sources.sort(key=lambda item: item["path_id"])
+    return {
+        "available": bool(sources),
+        "stage": state.get("development_stage", ""),
+        "status": state.get("status", ""),
+        "round": round_number,
+        "display_limit": top_n,
+        "sources": sources,
+        "message": (
+            "Candidates are ranked by inexpensive evidence. HuRI positives can replace "
+            "AlphaPulldown; final culling uses all nonredundant evidence."
+        ),
+    }
 
 
 def render_development_report(run_dir: Path) -> Path:
@@ -346,6 +622,13 @@ def _score_cheap_evidence(run_dir: Path, state: dict[str, Any]) -> dict[str, Any
     scored: list[dict[str, Any]] = []
     try:
         cache.ingest_evidence(project, configuration["cheap_streams"])
+        closure_indices = {
+            stream["id"]: build_physical_scaffold_closure_index(
+                cache, nodes, configuration, stream
+            )
+            for stream in configuration["cheap_streams"]
+            if stream.get("derived_handler") == "physical_scaffold_closure"
+        }
         for record in enumeration.to_dict("records"):
             parent = str(record["candidate_parent"])
             current = str(record["current_node"])
@@ -353,10 +636,20 @@ def _score_cheap_evidence(run_dir: Path, state: dict[str, Any]) -> dict[str, Any
             candidate_key = f"{record['path_id']}|{current}|{parent}"
             log_odds = prior_log_odds
             factors: dict[str, float] = {}
+            closure_scaffolds: set[str] = set()
+            closure_sources: set[str] = set()
             for order, stream in enumerate(configuration["cheap_streams"], start=1):
-                factor, observed, scoped_nonreport = cached_evidence_factor(
-                    cache, pair, stream, scopes
-                )
+                if stream.get("derived_handler") == "physical_scaffold_closure":
+                    factor, observed, scaffolds, sources = physical_scaffold_closure_factor(
+                        pair, stream, closure_indices[stream["id"]]
+                    )
+                    scoped_nonreport = False
+                    closure_scaffolds.update(scaffolds)
+                    closure_sources.update(sources)
+                else:
+                    factor, observed, scoped_nonreport = cached_evidence_factor(
+                        cache, pair, stream, scopes
+                    )
                 contribution = float(stream["weight"]) * math.log(factor)
                 before = log_odds
                 log_odds += contribution
@@ -372,8 +665,18 @@ def _score_cheap_evidence(run_dir: Path, state: dict[str, Any]) -> dict[str, Any
                     "weight": stream["weight"], "weighted_log_bf": contribution,
                     "log_odds_before": before, "log_odds_after": log_odds,
                     "probability_after": stable_expit(log_odds),
+                    "physical_supporting_scaffolds": ";".join(scaffolds) if stream.get("derived_handler") else "",
+                    "physical_anchor_sources": ";".join(sources) if stream.get("derived_handler") else "",
                 })
-            structural_required = bool(configuration["structural"]["enabled"] and parent in proteins and current in proteins)
+            structural_applicable = bool(
+                configuration["structural"]["enabled"]
+                and parent in proteins
+                and current in proteins
+            )
+            substitute = (
+                structural_substitute_stream(factors, configuration["cheap_streams"])
+                if structural_applicable else ""
+            )
             scored.append({
                 **record,
                 "candidate_key": candidate_key,
@@ -381,7 +684,10 @@ def _score_cheap_evidence(run_dir: Path, state: dict[str, Any]) -> dict[str, Any
                 "prior_log_odds": prior_log_odds,
                 "cheap_log_odds": log_odds,
                 "cheap_probability": stable_expit(log_odds),
-                "structural_required": structural_required,
+                "structural_required": bool(structural_applicable and not substitute),
+                "structural_substitute": substitute,
+                "closure_supporting_scaffolds": ";".join(sorted(closure_scaffolds)),
+                "closure_anchor_sources": ";".join(sorted(closure_sources)),
                 **{f"bf_{key}": value for key, value in factors.items()},
             })
     finally:
@@ -401,6 +707,7 @@ def _score_cheap_evidence(run_dir: Path, state: dict[str, Any]) -> dict[str, Any
         "stream_order", "stream_id", "record_found", "scoped_nonreport", "bayes_factor_used",
         "configured_missing_bayes_factor", "configured_scoped_missing_bayes_factor", "weight", "weighted_log_bf",
         "log_odds_before", "log_odds_after", "probability_after",
+        "physical_supporting_scaffolds", "physical_anchor_sources",
     ]
     pd.DataFrame(ledger, columns=ledger_columns).to_csv(ledger_path, sep="\t", index=False)
     scored_path = _round_file(run_dir, state, "cheap_scored_all.tsv")
@@ -461,6 +768,13 @@ def _select_cheap_shortlist(run_dir: Path, state: dict[str, Any]) -> dict[str, A
             cheap_probability=float(row["cheap_probability"]),
             evidence_factors=factors,
             structural_required=_truthy(row["structural_required"]),
+            structural_substitute=str(row.get("structural_substitute", "")),
+            closure_supporting_scaffolds=_semicolon_tuple(
+                row.get("closure_supporting_scaffolds", "")
+            ),
+            closure_anchor_sources=_semicolon_tuple(
+                row.get("closure_anchor_sources", "")
+            ),
         ))
     candidates.sort(key=lambda item: (item.path_id, -item.cheap_probability, item.candidate_parent.casefold(), item.candidate_parent))
     shortlist_path = _round_file(run_dir, state, "cheap_candidates.tsv")
@@ -499,9 +813,16 @@ def _prepare_structural(run_dir: Path, state: dict[str, Any]) -> dict[str, Any]:
                 "pair_node_a": candidate.pair[0],
                 "pair_node_b": candidate.pair[1],
                 "structural_required": candidate.structural_required,
+                "structural_substitute": candidate.structural_substitute,
                 "protocol_id": structural["protocol_id"] if candidate.structural_required else "",
                 "metric": structural["metric"] if candidate.structural_required else "",
-                "cache_status": "miss" if candidate in missing else ("hit" if candidate.structural_required else "not_applicable"),
+                "cache_status": (
+                    "miss" if candidate in missing else
+                    "hit" if candidate.structural_required else
+                    f"substituted_by:{candidate.structural_substitute}"
+                    if candidate.structural_substitute else
+                    "not_applicable"
+                ),
                 "cached_raw_score": "" if cached is None else cached["score"],
                 "cached_protocol_id": "" if cached is None else cached["protocol_id"],
                 "cached_source_file": "" if cached is None else cached["source_file"],
@@ -578,7 +899,9 @@ def _integrate_edge_evidence(run_dir: Path, state: dict[str, Any]) -> dict[str, 
             structural_status = "not_requested"
             structural_protocol_used = ""
             structural_source_file = ""
-            if candidate.structural_required:
+            if candidate.structural_substitute:
+                structural_status = f"substituted_by:{candidate.structural_substitute}"
+            elif candidate.structural_required:
                 cached = cached_structural_result(cache, candidate.pair, structural)
                 if cached is None:
                     raise RuntimeError(f"structural score unexpectedly missing for {candidate.pair}")

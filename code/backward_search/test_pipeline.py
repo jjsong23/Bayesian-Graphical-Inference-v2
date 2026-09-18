@@ -63,6 +63,7 @@ class CompletePipelineTests(unittest.TestCase):
         self.assertEqual(result["structural"]["reference_score"], 0.55)
         self.assertEqual(result["structural"]["maximum_concurrent_jobs"], 4)
         self.assertEqual(result["structural"]["bayes_factor_floor"], 0.1)
+        self.assertTrue(result["huri"]["substitute_for_structural"])
         with self.assertRaisesRegex(ValueError, "must be different"):
             normalize_backward_options({"target": "Aqp2", "receptor": "Aqp2"})
 

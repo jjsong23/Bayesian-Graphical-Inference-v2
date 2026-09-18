@@ -7,13 +7,12 @@ This research codebase builds and explores a probabilistic signaling graph for r
 3. **Path inference** ranks plausible paths from a chosen signaling receptor or regulator to a target protein.
 4. **Temporal validation** optionally tests whether measured dDAVP phosphoproteomic response times are consistent with the proposed path order.
 
-The local workbench exposes evidence selection, per-dataset normalization controls, evidence weights, optional scope-aware Bayes factors below 1 for node nondetections and unsupported edge pairs, partial directionality, path constraints, external-target insertion, and optional uncertainty-aware temporal annotations. Completed runs include posterior-distribution plots, a per-node/per-edge evidence ledger that reconstructs the Bayesian update, and an interactive merged network of the highest-ranked paths. Negative evidence can use either a stage-wide fixed absence factor or a per-dataset continuous mode that removes the positive-only floor, treats eligible nondetections as `x=0`, and lets weak observations produce BF below 1. The optional regularized positive-control calibration stage independently fits node and edge weights/Tq scales to supplied known-present controls. Negative evidence, calibration, scaffold closure, and temporal validation are disabled by default.
+The local workbench exposes evidence selection, per-dataset normalization controls, evidence weights, optional scope-aware Bayes factors below 1 for node nondetections and unsupported edge pairs, partial directionality, path constraints, external-target insertion, and optional uncertainty-aware temporal annotations. Completed runs include posterior-distribution plots, a per-node/per-edge evidence ledger that reconstructs the Bayesian update, and an interactive merged network of the highest-ranked paths. Negative evidence can use either a stage-wide fixed absence factor or a per-dataset continuous mode that removes the positive-only floor, treats eligible nondetections as `x=0`, and lets weak observations produce BF below 1. The optional regularized positive-control calibration stage independently fits node and edge weights/Tq scales to supplied known-present controls. The current Version 2 defaults mirror Version 1: all 12 node streams are enabled, eligible unobserved nodes receive the configured negative-evidence treatment, and scaffold-mediated closure is enabled. Unsupported-edge penalties, calibration, and temporal validation remain disabled by default.
 
 For the lab-specific Aqp2 analysis, node selection additionally exposes rat
 proteome and mouse RNA abundance for CCD, OMCD, and IMCD as six separate
-streams. They are off in the generic default profile so the validated 891-node
-baseline remains reproducible; the all-collecting-duct profile and its mapping
-audits are under `results/collecting_duct_node_selection/` and
+streams. These six streams are enabled in the current Version 1/Version 2
+default profile; their mapping audits are under `results/collecting_duct_node_selection/` and
 `data/node_selection/collecting_duct/` in the companion data archive.
 
 ## Repository and data archive
@@ -79,6 +78,20 @@ away from them, with a byte-level cleanup audit. Existing valid results under
 HuRI binary interactions are available as optional mapped experimental edge
 evidence. See
 [`docs/V2_STORAGE_CACHE_HURI_2026-09-15.md`](docs/V2_STORAGE_CACHE_HURI_2026-09-15.md).
+When HuRI is enabled, a verified reported HuRI positive replaces the
+AlphaPulldown request for that pair by default. The HuRI BF is applied once as
+cheap evidence and the structural term remains neutral, so the same interaction
+is not double-counted. HuRI non-reporting never suppresses AlphaPulldown.
+
+Scaffold-mediated closure is restricted to physical evidence. For two proteins
+to receive the closure BF, each must have either an accepted cached
+AlphaPulldown/AlphaFold score strictly above `Anchor >` (default 0.90) or a
+reported-positive HuRI interaction with the same exact `adaptor_scaffold`
+protein. Localization, STRING, OmniPath, kinase prediction, STITCH, and the
+integrated cheap-edge posterior cannot create closure anchors. The default
+support likelihood remains 0.90 (`BF = 1.8`), and nonqualifying pairs remain
+neutral. Closure is recalculated from the persistent physical-result cache at
+each Version 2 frontier so newly collected results can support later rounds.
 
 ```powershell
 python dynamic_search.py init --config configs/backward_search.example.json --run-dir runs/example
@@ -110,6 +123,11 @@ python dynamic_search.py trace --run-dir runs/inspect
 
 See [`docs/V2_STEPWISE_DEVELOPMENT_MODE.md`](docs/V2_STEPWISE_DEVELOPMENT_MODE.md)
 for every pause point, output table, and equation.
+
+The Version 2 run panel also polls a live frontier view. For each active source
+node it draws the top 20 cheap-evidence candidates, shows every BF/weight/log-BF
+contribution on selection, detects finished ipTM files before collection, and
+changes each candidate to retained or culled after combined-evidence pruning.
 
 When a round reports `waiting_for_structural`, the repository can be copied to
 NIH Biowulf and submitted using `biowulf/submit_round.sh`. The batch side uses

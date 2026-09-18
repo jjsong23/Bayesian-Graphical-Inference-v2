@@ -87,6 +87,7 @@
       <div class="reference-evidence">
         <div class="checks">
           <label><input id="huriEnabled" type="checkbox"> Use HuRI experimentally detected binary PPIs</label>
+          <label><input id="huriSubstitute" type="checkbox"> Verified HuRI positives replace AlphaPulldown</label>
         </div>
         <div class="grid four compact">
           <label>HuRI weight<input id="huriWeight" type="number" min="0" max="10" step="0.1"></label>
@@ -102,7 +103,7 @@
           <label class="wide">HuRI.tsv path<input id="huriInteractionsFile" type="text"></label>
           <label class="wide">Optional screened-gene file<input id="huriScreenedGenesFile" type="text" placeholder="Required only for supplied-file scope"></label>
         </div>
-        <p class="muted">HuRI publishes detected pairs, not a complete pair-level list of failed tests. The neutral rule is safest; either weak-negative rule is an explicit assumption and remains visible in the run audit.</p>
+        <p class="muted">A reported HuRI positive is counted once: when substitution is enabled, its HuRI BF is used and that pair is not submitted to AlphaPulldown. HuRI non-reporting is not a substitute. The neutral non-report rule is safest; either weak-negative rule is an explicit assumption and remains visible in the run audit.</p>
       </div>
     </section>
 
@@ -138,6 +139,35 @@
         <button data-action="collect">Collect + continue</button>
         <button data-action="trace">Refresh trace</button>
         <button data-action="cancel" class="danger">Cancel active work</button>
+      </div>
+      <div id="frontierPanel" class="frontier-panel hidden">
+        <div class="frontier-heading">
+          <div>
+            <h3>Live frontier evidence</h3>
+            <p id="frontierMessage" class="muted"></p>
+          </div>
+          <label>Frontier source<select id="frontierSource"></select></label>
+        </div>
+        <div class="frontier-legend" aria-label="Frontier status legend">
+          <span><i class="legend-dot pending"></i>AlphaPulldown pending</span>
+          <span><i class="legend-dot completed"></i>Structural result ready</span>
+          <span><i class="legend-dot huri"></i>HuRI substitute</span>
+          <span><i class="legend-dot retained"></i>Retained</span>
+          <span><i class="legend-dot culled"></i>Culled</span>
+        </div>
+        <div class="frontier-layout">
+          <div class="frontier-graph-wrap">
+            <svg id="frontierGraph" role="img" aria-label="Top frontier candidates connected to their current source node"></svg>
+          </div>
+          <div id="frontierDetail" class="frontier-detail" aria-live="polite"></div>
+        </div>
+        <div class="frontier-table-wrap">
+          <table class="frontier-table">
+            <thead><tr><th>Rank</th><th>Candidate</th><th>Cheap P</th><th>Combined P</th><th>Structural/HuRI status</th><th>Decision</th></tr></thead>
+            <tbody id="frontierRows"></tbody>
+          </table>
+        </div>
+        <p id="frontierUpdated" class="muted frontier-updated"></p>
       </div>
       <div class="downloads">
         <a id="traceLink" target="_blank">Open stepwise trace</a>

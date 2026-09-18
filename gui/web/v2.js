@@ -3,6 +3,9 @@ let registry = null;
 let configuration = null;
 let currentJob = null;
 let pollTimer = null;
+let frontierPayload = null;
+let frontierSelectedSource = '';
+let frontierSelectedCandidate = '';
 
 const byId = id => document.getElementById(id);
 const numeric = (id, fallback) => {
@@ -13,6 +16,18 @@ const setNotice = (message, error=false) => {
   const box = byId('notice');
   box.textContent = message || '';
   box.className = message ? `notice${error ? ' error' : ''}` : 'notice hidden';
+};
+const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, character => ({
+  '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
+})[character]);
+const formatProbability = value => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(4) : '—';
+};
+const svgNode = (name, attributes={}) => {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', name);
+  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, value));
+  return node;
 };
 
 async function api(url, options={}) {
@@ -87,6 +102,7 @@ function populateForm() {
   byId('gpuJobs').value = b.structural.maximum_concurrent_jobs;
   const h = b.huri;
   byId('huriEnabled').checked = h.enabled;
+  byId('huriSubstitute').checked = h.substitute_for_structural !== false;
   byId('huriWeight').value = h.weight;
   byId('huriPositiveBf').value = h.positive_bayes_factor;
   byId('huriNonreportScope').value = h.nonreported_scope;
@@ -128,6 +144,7 @@ function captureForm() {
   });
   Object.assign(b.huri, {
     enabled:byId('huriEnabled').checked,
+    substitute_for_structural:byId('huriSubstitute').checked,
     weight:numeric('huriWeight',1),
     positive_bayes_factor:numeric('huriPositiveBf',5),
     nonreported_scope:byId('huriNonreportScope').value,
@@ -160,6 +177,148 @@ function captureForm() {
   return configuration;
 }
 
+function frontierVisualStatus(candidate) {
+  if (candidate.retained === true) return 'retained';
+  if (candidate.retained === false) return 'culled';
+  return candidate.structural_status || 'pending';
+}
+
+function frontierStatusLabel(candidate) {
+  const labels = {
+    pending:'AlphaPulldown pending', completed_uncollected:'AlphaPulldown complete; awaiting collection',
+    integrated:'AlphaPulldown integrated', cached:'Cached structural result',
+    huri_substitute:'Verified HuRI substitute', not_applicable:'Structural prediction not applicable'
+  };
+  return labels[candidate.structural_status] || candidate.structural_status || '—';
+}
+
+function showFrontierCandidate(candidate) {
+  frontierSelectedCandidate = candidate.candidate_key;
+  document.querySelectorAll('.frontier-node,.frontier-table tbody tr').forEach(element => {
+    element.classList.toggle('selected', element.dataset.key === candidate.candidate_key);
+  });
+  const evidenceRows = (candidate.evidence || []).map(item => `
+    <tr><td>${escapeHtml(item.label)}</td><td class="evidence-${escapeHtml(item.effect)}">${escapeHtml(item.effect)}</td>
+    <td>${Number(item.factor).toPrecision(4)}</td><td>${Number(item.weight).toPrecision(3)}</td>
+    <td>${Number(item.weighted_log_bf).toFixed(4)}</td></tr>`).join('');
+  byId('frontierDetail').innerHTML = `
+    <h4>${escapeHtml(candidate.symbol)} ↔ ${escapeHtml(candidate.source)}</h4>
+    <p class="muted">Cheap-evidence rank ${candidate.rank}${candidate.forced_receptor ? ' · forced receptor safety check' : ''}</p>
+    <p>${escapeHtml(candidate.interpretation)}</p>
+    <dl>
+      <dt>Cheap posterior</dt><dd>${formatProbability(candidate.cheap_probability)}</dd>
+      <dt>Combined posterior</dt><dd>${formatProbability(candidate.combined_probability)}</dd>
+      <dt>Structural state</dt><dd>${escapeHtml(frontierStatusLabel(candidate))}</dd>
+      <dt>ipTM</dt><dd>${candidate.structural_score == null ? '—' : Number(candidate.structural_score).toFixed(4)}</dd>
+      <dt>Structural BF</dt><dd>${candidate.structural_bayes_factor == null ? '—' : Number(candidate.structural_bayes_factor).toPrecision(4)}</dd>
+      <dt>Classes</dt><dd>${escapeHtml(candidate.classes || '—')}</dd>
+      <dt>Decision</dt><dd>${escapeHtml(candidate.decision_reason || 'Not decided yet')}</dd>
+    </dl>
+    <table><thead><tr><th>Evidence</th><th>Effect</th><th>BF</th><th>Weight</th><th>Weighted ln(BF)</th></tr></thead>
+    <tbody>${evidenceRows || '<tr><td colspan="5">No inexpensive evidence factors were recorded.</td></tr>'}</tbody></table>`;
+}
+
+function drawFrontierSource(source) {
+  const svg = byId('frontierGraph');
+  const candidates = source.candidates || [];
+  const columns = candidates.length > 10 ? 2 : 1;
+  const rowsPerColumn = Math.ceil(candidates.length / columns);
+  const width = 940;
+  const height = Math.max(470, rowsPerColumn * 56 + 70);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.style.height = `${height}px`;
+  svg.innerHTML = '';
+  const sourceX = 105;
+  const sourceY = height / 2;
+  const positions = candidates.map((candidate, index) => {
+    const column = Math.floor(index / rowsPerColumn);
+    const row = index % rowsPerColumn;
+    return {candidate, x: columns === 1 ? 560 : 455 + column * 285, y: 52 + row * 56};
+  });
+  positions.forEach(({candidate, x, y}) => {
+    const status = frontierVisualStatus(candidate);
+    const line = svgNode('line', {x1:sourceX + 18, y1:sourceY, x2:x - 14, y2:y, class:`frontier-edge ${status}`});
+    const title = svgNode('title');
+    title.textContent = candidate.interpretation;
+    line.appendChild(title);
+    svg.appendChild(line);
+  });
+  const sourceGroup = svgNode('g', {class:'frontier-source'});
+  sourceGroup.appendChild(svgNode('circle', {cx:sourceX, cy:sourceY, r:18}));
+  const sourceLabel = svgNode('text', {x:sourceX, y:sourceY + 38, 'text-anchor':'middle'});
+  sourceLabel.textContent = source.source;
+  sourceGroup.appendChild(sourceLabel);
+  svg.appendChild(sourceGroup);
+  positions.forEach(({candidate, x, y}) => {
+    const status = frontierVisualStatus(candidate);
+    const group = svgNode('g', {class:`frontier-node ${status}`, role:'button', tabindex:'0'});
+    group.dataset.key = candidate.candidate_key;
+    group.appendChild(svgNode('circle', {cx:x, cy:y, r:12}));
+    const rank = svgNode('text', {x:x - 21, y:y + 4, 'text-anchor':'end', class:'rank-label'});
+    rank.textContent = `#${candidate.rank}`;
+    group.appendChild(rank);
+    const label = svgNode('text', {x:x + 20, y:y + 5});
+    label.textContent = `${candidate.symbol}  ${formatProbability(candidate.combined_probability ?? candidate.cheap_probability)}`;
+    group.appendChild(label);
+    const title = svgNode('title');
+    title.textContent = candidate.interpretation;
+    group.appendChild(title);
+    group.addEventListener('click', () => showFrontierCandidate(candidate));
+    group.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showFrontierCandidate(candidate); }
+    });
+    svg.appendChild(group);
+  });
+  const rows = byId('frontierRows');
+  rows.innerHTML = '';
+  candidates.forEach(candidate => {
+    const row = document.createElement('tr');
+    row.dataset.key = candidate.candidate_key;
+    const decision = candidate.retained === true ? 'Retained' : candidate.retained === false ? 'Culled' : 'Pending';
+    row.innerHTML = `<td>${candidate.rank}</td><td><strong>${escapeHtml(candidate.symbol)}</strong></td>
+      <td>${formatProbability(candidate.cheap_probability)}</td><td>${formatProbability(candidate.combined_probability)}</td>
+      <td>${escapeHtml(frontierStatusLabel(candidate))}</td><td>${decision}</td>`;
+    row.addEventListener('click', () => showFrontierCandidate(candidate));
+    rows.appendChild(row);
+  });
+  const selected = candidates.find(item => item.candidate_key === frontierSelectedCandidate) || candidates[0];
+  if (selected) showFrontierCandidate(selected);
+}
+
+function renderFrontier(payload) {
+  frontierPayload = payload;
+  const panel = byId('frontierPanel');
+  if (!payload?.available || !(payload.sources || []).length) {
+    panel.classList.add('hidden');
+    return;
+  }
+  panel.classList.remove('hidden');
+  byId('frontierMessage').textContent = `Round ${payload.round}, ${payload.stage}: ${payload.message}`;
+  const select = byId('frontierSource');
+  const available = new Set(payload.sources.map(item => item.path_id));
+  if (!available.has(frontierSelectedSource)) frontierSelectedSource = payload.sources[0].path_id;
+  select.innerHTML = '';
+  payload.sources.forEach(source => {
+    const option = document.createElement('option');
+    option.value = source.path_id;
+    option.textContent = `${source.source} · ${source.path_id} · ${source.candidates.length} candidates`;
+    option.selected = source.path_id === frontierSelectedSource;
+    select.appendChild(option);
+  });
+  const source = payload.sources.find(item => item.path_id === frontierSelectedSource) || payload.sources[0];
+  drawFrontierSource(source);
+  byId('frontierUpdated').textContent = `Live view refreshed ${new Date().toLocaleTimeString()}`;
+}
+
+async function refreshFrontier() {
+  if (!currentJob) return;
+  try {
+    renderFrontier(await api(`/api/v2/runs/${currentJob.job_id}/frontier`));
+  } catch (_) {
+    // A run may still be initializing, or a table may be between atomic stages.
+  }
+}
+
 function updateRun(job) {
   currentJob = job;
   localStorage.setItem('gbi-v2-last-run', job.job_id);
@@ -178,6 +337,7 @@ function updateRun(job) {
   const base = `/api/v2/runs/${job.job_id}/files`;
   byId('traceLink').href = `${base}/trace`; byId('nodesLink').href = `${base}/selected-nodes`;
   byId('stateLink').href = `${base}/pipeline-state`; byId('configLink').href = `${base}/configuration`;
+  refreshFrontier();
 }
 
 async function poll() {
@@ -214,11 +374,17 @@ async function boot() {
     registry = payload.registry; configuration = payload.defaults;
     byId('dataRoot').textContent = `Evidence source: ${payload.evidence_root || 'this repository'}`;
     populateForm(); byId('initialize').addEventListener('click', initialize);
+    byId('frontierSource').addEventListener('change', event => {
+      frontierSelectedSource = event.target.value;
+      const source = frontierPayload?.sources?.find(item => item.path_id === frontierSelectedSource);
+      if (source) { frontierSelectedCandidate = ''; drawFrontierSource(source); }
+    });
     document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => action(button.dataset.action)));
     const previous = new URLSearchParams(window.location.search).get('run') || localStorage.getItem('gbi-v2-last-run');
     if (previous) {
       try { updateRun(await api(`/api/v2/runs/${previous}`)); poll(); } catch (_) { /* stale browser state */ }
     }
+    window.setInterval(refreshFrontier, 5000);
   } catch (error) { setNotice(`Unable to load Version 2: ${error.message}`, true); }
 }
 

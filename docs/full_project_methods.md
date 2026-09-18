@@ -917,15 +917,20 @@ equations and source-specific behavior.
 ### 11.2 Optional scaffold-mediated triadic closure
 
 The interactive workflow includes an optional derived edge stream for
-scaffold-mediated proximity. It is evaluated only after all selected primary
-edge streams have been integrated. Protein nodes carrying the exact
+scaffold-mediated proximity. It is evaluated from physical interaction results,
+not from the posterior formed by integrating general primary edge streams.
+Protein nodes carrying the exact
 `adaptor_scaffold` class token serve as possible common scaffold nodes; small
 molecules never serve as closure endpoints or common scaffolds.
 
-For a pre-closure protein-scaffold probability (P_{is}) and anchor cutoff
-(c), proteins (i) and (j) qualify when at least one annotated scaffold (s)
-satisfies (P_{is}>c) and (P_{js}>c). The default cutoff is 0.90 and is
-exclusive. Every qualifying pair receives the same support likelihood 0.90,
+For a physical protein-scaffold score (A_{is}) and anchor cutoff (c), proteins
+(i) and (j) qualify when at least one annotated scaffold (s) satisfies
+(A_{is}>c) and (A_{js}>c). The only admissible anchors are accepted cached
+AlphaPulldown/AlphaFold scores or reported-positive HuRI interactions. The
+default structural-score cutoff is 0.90 and is exclusive; HuRI positives
+qualify directly. Localization, STRING, OmniPath, kinase prediction, STITCH,
+and integrated nonphysical posteriors cannot create anchors. Every qualifying
+pair receives the same support likelihood 0.90,
 which corresponds to (BF=0.90/0.50=1.8) relative to the workflow's neutral
 likelihood. All nonqualifying pairs receive neutral (BF=1). Scaffold degree,
 the number of shared scaffolds, and the amount by which an anchor exceeds the
@@ -933,14 +938,12 @@ cutoff do not alter the factor. There is no empirical (T_q), degree penalty,
 continuous shared-scaffold score, or noisy-OR operation.
 
 No inferred closure edge is fed back as a new scaffold anchor. This one-pass
-restriction prevents recursive densification. The stream is disabled by
-default and must be described as dependent proximity or co-complex evidence,
-not as an independent experiment or direct-binding proof. With the default
-891-node graph and settings, 205,920 qualifying pairs received BF 1.8, 81,323
-pairs were newly raised above 0.5, and the supported-pair total increased from
-169,414 to 250,737. The revised validation run and its pair-level supporting-
-scaffold audit are in
-`results/gui_runs/scaffold_binary_closure_validation_20260804_v2/`.
+restriction prevents recursive densification. The rule must be described as
+dependent proximity or co-complex evidence, not as an independent experiment
+or direct-binding proof. The Version 2 audit records the exact supporting
+scaffold and physical source/protocol for both anchors. The older counts and
+validation under `results/gui_runs/scaffold_binary_closure_validation_20260804_v2/`
+were generated from general pre-closure posteriors and are historical/superseded.
 
 ## 12. mpkCCD subcellular-fraction localization evidence
 

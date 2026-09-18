@@ -18,8 +18,9 @@ A single saved run now owns the complete sequence:
 9. Initialize the bounded backward frontier at the target.
 10. Enumerate candidate upstream parents, update their edge probabilities with
     cheap evidence, and retain the configured shortlist.
-11. Reuse cached AlphaPulldown scores and package only new shortlisted protein
-    pairs for Biowulf.
+11. Reuse cached AlphaPulldown scores, accept verified HuRI positives as
+    nonredundant structural substitutes when configured, and package only the
+    remaining new shortlisted protein pairs for Biowulf.
 12. Import completed ipTM scores, update edge probabilities, prune the frontier,
     and repeat until the receptor is reached or maximum depth is exhausted.
 
@@ -53,6 +54,23 @@ structural reference score and is applied only to shortlisted frontier pairs.
 The raw score, transformation settings, BF, weighted contribution, and final
 edge probability are retained in the round ledgers.
 
+HuRI substitution is deliberately non-additive. For a reported mapped HuRI
+positive, the HuRI BF enters the cheap-evidence sum once. When
+`substitute_for_structural` is enabled and the HuRI weight is positive, that
+pair is omitted from `pairs.tsv`; its structural status is
+`substituted_by:huri_binary_interaction` and its structural BF is 1. HuRI
+nonreporting or a scoped weak-negative factor does not substitute for an
+AlphaPulldown result.
+
+Scaffold-mediated closure is evaluated separately from the full cheap-edge
+matrix. A candidate pair receives closure support only if both endpoints have
+qualifying physical interactions with the same exact `adaptor_scaffold` node:
+an accepted cached AlphaPulldown/AlphaFold score strictly above `Anchor >`, or
+a reported-positive HuRI pair. General edge posteriors and nonphysical streams
+are never anchors. The fixed closure likelihood is converted to BF relative to
+0.5 (default `0.90 / 0.50 = 1.8`). The pair-level audit retains the common
+scaffold and source/protocol of both physical anchors.
+
 ## GUI
 
 Launch the repository and open `/v2.html`:
@@ -80,6 +98,20 @@ downloadable from the run panel. Complete run directories are written under
 `runs/` and are excluded from Git. Writable incremental and structural pair
 caches are stored under Version 2's ignored `runtime/` directory, so a linked
 Version 1 evidence archive is not used as Version 2's cache destination.
+
+During development runs, the run panel polls a read-only live frontier endpoint.
+It draws the top 20 ranked cheap candidates connected to each current source,
+shows the exact BF, weight, and weighted log-BF contributions on selection,
+and reads completed ipTM CSVs even before formal collection. The displayed
+combined posterior is provisional until collection. After frontier selection,
+the same graph labels candidates as retained or culled using the final
+combined-evidence decision.
+
+The current Version 2 evidence defaults match Version 1 except for HPA
+localization. Both HPA alternatives default to `Tq × = 0.5`; lowering the
+threshold is more sensitive under the complement kernel because the same
+similarity produces a larger `x/Tq` ratio and more pairs receive BF above 1.
+Their calibration-preferred multiplier is also 0.5.
 
 ## CLI equivalents
 

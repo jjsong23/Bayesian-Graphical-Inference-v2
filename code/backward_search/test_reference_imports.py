@@ -71,6 +71,8 @@ class ReferenceImportTests(unittest.TestCase):
         scope = pd.read_csv(stream["scope_nodes_file"], sep="\t")
         self.assertEqual(set(scope["symbol"]), {"A", "B", "C"})
         self.assertEqual(stream["scoped_missing_bayes_factor"], 0.9)
+        self.assertEqual(stream["structural_substitute_minimum_factor"], 1.0)
+        self.assertTrue(summary["substitute_for_structural"])
 
 
 if __name__ == "__main__":

@@ -329,7 +329,29 @@ def load_configuration(path: Path) -> tuple[Path, dict[str, Any]]:
             raise ValueError(f"invalid weight/missing BF for {stream_id}")
         if stream["scoped_missing_bayes_factor"] <= 0:
             raise ValueError(f"invalid scoped missing BF for {stream_id}")
-        if not stream.get("file"):
+        derived_handler = str(stream.get("derived_handler", "")).strip()
+        if derived_handler:
+            if derived_handler != "physical_scaffold_closure":
+                raise ValueError(
+                    f"cheap stream {stream_id} has unsupported derived handler "
+                    f"{derived_handler!r}"
+                )
+            stream["derived_handler"] = derived_handler
+            stream["anchor_score_cutoff"] = float(
+                stream.get("anchor_score_cutoff", 0.9)
+            )
+            stream["closure_likelihood"] = float(
+                stream.get("closure_likelihood", 0.9)
+            )
+            if not 0.0 <= stream["anchor_score_cutoff"] <= 1.0:
+                raise ValueError(
+                    f"physical scaffold anchor cutoff for {stream_id} must be in [0, 1]"
+                )
+            if not 0.5 <= stream["closure_likelihood"] < 1.0:
+                raise ValueError(
+                    f"physical scaffold closure likelihood for {stream_id} must be in [0.5, 1)"
+                )
+        elif not stream.get("file"):
             raise ValueError(f"cheap stream {stream_id} is missing file")
         streams.append(stream)
     merged["cheap_streams"] = streams
@@ -411,6 +433,9 @@ class PairCache:
     def ingest_evidence(self, project: Path, streams: list[dict[str, Any]]) -> dict[str, int]:
         counts: dict[str, int] = {}
         for stream in streams:
+            if stream.get("derived_handler"):
+                counts[stream["id"]] = 0
+                continue
             path = _resolve(project, stream["file"]).resolve()
             if not path.is_file():
                 raise FileNotFoundError(f"cheap evidence file is missing: {path}")
@@ -457,6 +482,39 @@ class PairCache:
             (node_a, node_b, protocol_id, metric),
         ).fetchone()
         return None if row is None else float(row[0])
+
+    def evidence_records(self, evidence_id: str) -> list[tuple[str, str, float]]:
+        """Return every cached pair/factor for one explicit evidence stream."""
+        return [
+            (str(node_a), str(node_b), float(factor))
+            for node_a, node_b, factor in self.connection.execute(
+                """SELECT node_a, node_b, bayes_factor FROM evidence
+                WHERE evidence_id=?""",
+                (str(evidence_id),),
+            ).fetchall()
+        ]
+
+    def structural_records(
+        self,
+        protocol_ids: Iterable[str],
+        metric: str,
+    ) -> list[tuple[str, str, str, float]]:
+        """Return cached structural scores from only explicitly accepted protocols."""
+        protocols = list(dict.fromkeys(str(item) for item in protocol_ids if str(item)))
+        if not protocols:
+            return []
+        placeholders = ",".join("?" for _ in protocols)
+        query = (
+            "SELECT node_a, node_b, protocol_id, score FROM structural_predictions "
+            f"WHERE metric=? AND protocol_id IN ({placeholders})"
+        )
+        return [
+            (str(node_a), str(node_b), str(protocol_id), float(score))
+            for node_a, node_b, protocol_id, score in self.connection.execute(
+                query,
+                (str(metric), *protocols),
+            ).fetchall()
+        ]
 
     def structural_result(
         self,
@@ -623,6 +681,9 @@ class Candidate:
     cheap_probability: float
     evidence_factors: dict[str, float]
     structural_required: bool
+    structural_substitute: str = ""
+    closure_supporting_scaffolds: tuple[str, ...] = ()
+    closure_anchor_sources: tuple[str, ...] = ()
 
     @property
     def pair(self) -> tuple[str, str]:
@@ -735,6 +796,133 @@ def cached_evidence_factor(
     return float(stream["missing_bayes_factor"]), False, False
 
 
+def build_physical_scaffold_closure_index(
+    cache: PairCache,
+    nodes: pd.DataFrame,
+    configuration: dict[str, Any],
+    stream: dict[str, Any],
+) -> dict[str, Any]:
+    """Index physically supported protein-to-scaffold anchors.
+
+    The only admissible anchors are accepted-protocol AlphaPulldown/AlphaFold
+    scores strictly above the configured cutoff and reported-positive HuRI
+    records.  Other cheap evidence streams never enter this index.
+    """
+    symbol_column = str(configuration["symbol_column"])
+    type_column = str(configuration["node_type_column"])
+    classes_column = str(configuration["classes_column"])
+    symbols = {str(value).strip() for value in nodes[symbol_column] if str(value).strip()}
+    if type_column in nodes.columns:
+        protein_symbols = {
+            str(row[symbol_column]).strip()
+            for row in nodes.to_dict("records")
+            if str(row.get(type_column, "")).strip().casefold() == "protein"
+        }
+    else:
+        protein_symbols = set(symbols)
+    scaffold_symbols = {
+        str(row[symbol_column]).strip()
+        for row in nodes.to_dict("records")
+        if str(row[symbol_column]).strip() in protein_symbols
+        and "adaptor_scaffold"
+        in {
+            token.strip()
+            for token in str(row.get(classes_column, "")).split(";")
+            if token.strip()
+        }
+    }
+    scaffolds_by_partner: dict[str, set[str]] = {}
+    anchor_sources: dict[tuple[str, str], set[str]] = {}
+
+    def add_anchor(left: str, right: str, source: str) -> None:
+        if left not in protein_symbols or right not in protein_symbols:
+            return
+        for scaffold, partner in ((left, right), (right, left)):
+            if scaffold not in scaffold_symbols or scaffold == partner:
+                continue
+            scaffolds_by_partner.setdefault(partner, set()).add(scaffold)
+            anchor_sources.setdefault((scaffold, partner), set()).add(source)
+
+    cutoff = float(stream.get("anchor_score_cutoff", 0.9))
+    structural = configuration["structural"]
+    for left, right, protocol_id, score in cache.structural_records(
+        structural_protocol_ids(structural),
+        str(structural["metric"]),
+    ):
+        if score > cutoff:
+            add_anchor(left, right, f"AlphaPulldown:{protocol_id}")
+
+    for evidence_stream in configuration["cheap_streams"]:
+        if float(evidence_stream.get("weight", 1.0)) <= 0.0:
+            continue
+        is_huri = (
+            str(evidence_stream.get("physical_anchor_kind", ""))
+            == "huri_reported_positive"
+            or str(evidence_stream.get("id", "")) == "huri_binary_interaction"
+        )
+        if not is_huri:
+            continue
+        threshold = float(
+            evidence_stream.get("structural_substitute_minimum_factor", 1.0)
+        )
+        for left, right, factor in cache.evidence_records(evidence_stream["id"]):
+            if factor > threshold:
+                add_anchor(left, right, "HuRI:reported_positive")
+
+    return {
+        "protein_symbols": protein_symbols,
+        "scaffold_symbols": scaffold_symbols,
+        "scaffolds_by_partner": scaffolds_by_partner,
+        "anchor_sources": anchor_sources,
+        "anchor_score_cutoff": cutoff,
+    }
+
+
+def physical_scaffold_closure_factor(
+    pair: tuple[str, str],
+    stream: dict[str, Any],
+    index: dict[str, Any],
+) -> tuple[float, bool, tuple[str, ...], tuple[str, ...]]:
+    """Return the fixed closure BF and its exact physical-anchor audit."""
+    left, right = canonical_pair(*pair)
+    proteins = index["protein_symbols"]
+    if left not in proteins or right not in proteins:
+        return 1.0, False, (), ()
+    left_scaffolds = index["scaffolds_by_partner"].get(left, set())
+    right_scaffolds = index["scaffolds_by_partner"].get(right, set())
+    shared = tuple(sorted(left_scaffolds.intersection(right_scaffolds)))
+    if not shared:
+        return 1.0, False, (), ()
+    source_labels: set[str] = set()
+    for scaffold in shared:
+        for source in index["anchor_sources"].get((scaffold, left), set()):
+            source_labels.add(f"{scaffold}-{left}:{source}")
+        for source in index["anchor_sources"].get((scaffold, right), set()):
+            source_labels.add(f"{scaffold}-{right}:{source}")
+    factor = float(stream.get("closure_likelihood", 0.9)) / 0.5
+    return factor, True, shared, tuple(sorted(source_labels))
+
+
+def structural_substitute_stream(
+    factors: dict[str, float],
+    streams: Iterable[dict[str, Any]],
+) -> str:
+    """Return the verified-positive stream replacing structural prediction.
+
+    A substitute is applied only when a stream explicitly declares a positive
+    threshold.  This keeps the mechanism open-ended while preventing ordinary
+    inexpensive evidence from accidentally suppressing AlphaPulldown.
+    """
+    for stream in streams:
+        threshold = stream.get("structural_substitute_minimum_factor")
+        if threshold is None or float(stream.get("weight", 1.0)) <= 0.0:
+            continue
+        stream_id = str(stream["id"])
+        if float(factors.get(stream_id, 0.0)) > float(threshold):
+            return stream_id
+    return ""
+
+
 def _candidate_to_dict(candidate: Candidate) -> dict[str, Any]:
     return {
         "path_id": candidate.path_id,
@@ -746,6 +934,9 @@ def _candidate_to_dict(candidate: Candidate) -> dict[str, Any]:
         "cheap_probability": candidate.cheap_probability,
         "evidence_factors": candidate.evidence_factors,
         "structural_required": candidate.structural_required,
+        "structural_substitute": candidate.structural_substitute,
+        "closure_supporting_scaffolds": list(candidate.closure_supporting_scaffolds),
+        "closure_anchor_sources": list(candidate.closure_anchor_sources),
     }
 
 
@@ -760,6 +951,13 @@ def _candidate_from_dict(value: dict[str, Any]) -> Candidate:
         cheap_probability=float(value["cheap_probability"]),
         evidence_factors={key: float(item) for key, item in value["evidence_factors"].items()},
         structural_required=bool(value["structural_required"]),
+        structural_substitute=str(value.get("structural_substitute", "")),
+        closure_supporting_scaffolds=tuple(
+            str(item) for item in value.get("closure_supporting_scaffolds", [])
+        ),
+        closure_anchor_sources=tuple(
+            str(item) for item in value.get("closure_anchor_sources", [])
+        ),
     )
 
 
@@ -838,7 +1036,7 @@ def _score_candidates(
     configuration: dict[str, Any],
     state: dict[str, Any],
     cache: PairCache,
-    sequences: dict[str, str],
+    nodes: pd.DataFrame,
     protein_symbols: set[str],
     eligible_symbols: list[str],
     disallowed: set[tuple[str, str]],
@@ -847,6 +1045,13 @@ def _score_candidates(
     top_n = int(configuration["cheap_top_n_per_frontier"])
     structural_enabled = bool(configuration["structural"]["enabled"])
     scopes = load_stream_scopes(project, configuration["cheap_streams"])
+    closure_indices = {
+        stream["id"]: build_physical_scaffold_closure_index(
+            cache, nodes, configuration, stream
+        )
+        for stream in configuration["cheap_streams"]
+        if stream.get("derived_handler") == "physical_scaffold_closure"
+    }
     receptor = configuration["receptor"]
     candidates: list[Candidate] = []
     for path in state["beam"]:
@@ -857,16 +1062,29 @@ def _score_candidates(
             if parent == current or parent in path_nodes or (parent, current) in disallowed:
                 continue
             factors: dict[str, float] = {}
+            closure_scaffolds: set[str] = set()
+            closure_sources: set[str] = set()
             log_odds = prior_log_odds
             pair = canonical_pair(parent, current)
             for stream in configuration["cheap_streams"]:
-                factor, _, _ = cached_evidence_factor(cache, pair, stream, scopes)
+                if stream.get("derived_handler") == "physical_scaffold_closure":
+                    factor, _, scaffolds, sources = physical_scaffold_closure_factor(
+                        pair, stream, closure_indices[stream["id"]]
+                    )
+                    closure_scaffolds.update(scaffolds)
+                    closure_sources.update(sources)
+                else:
+                    factor, _, _ = cached_evidence_factor(cache, pair, stream, scopes)
                 factors[stream["id"]] = factor
                 log_odds += float(stream["weight"]) * math.log(factor)
             structural_applicable = (
                 structural_enabled
                 and parent in protein_symbols
                 and current in protein_symbols
+            )
+            substitute = (
+                structural_substitute_stream(factors, configuration["cheap_streams"])
+                if structural_applicable else ""
             )
             ranked.append(
                 Candidate(
@@ -878,7 +1096,10 @@ def _score_candidates(
                     cheap_log_odds=log_odds,
                     cheap_probability=stable_expit(log_odds),
                     evidence_factors=factors,
-                    structural_required=structural_applicable,
+                    structural_required=bool(structural_applicable and not substitute),
+                    structural_substitute=substitute,
+                    closure_supporting_scaffolds=tuple(sorted(closure_scaffolds)),
+                    closure_anchor_sources=tuple(sorted(closure_sources)),
                 )
             )
         ranked.sort(key=lambda item: (-item.cheap_probability, item.candidate_parent.casefold(), item.candidate_parent))
@@ -960,6 +1181,9 @@ def _candidate_rows(candidates: Iterable[Candidate]) -> list[dict[str, Any]]:
             "candidate_parent": item.candidate_parent,
             "cheap_probability": item.cheap_probability,
             "structural_required": item.structural_required,
+            "structural_substitute": item.structural_substitute,
+            "closure_supporting_scaffolds": ";".join(item.closure_supporting_scaffolds),
+            "closure_anchor_sources": ";".join(item.closure_anchor_sources),
             "path_nodes_backward": ";".join(item.path_nodes),
             **{f"bf_{key}": value for key, value in item.evidence_factors.items()},
         }
@@ -983,7 +1207,9 @@ def _finalize_round(
         structural_status = "not_requested"
         structural_protocol_used = ""
         structural_source_file = ""
-        if candidate.structural_required:
+        if candidate.structural_substitute:
+            structural_status = f"substituted_by:{candidate.structural_substitute}"
+        elif candidate.structural_required:
             cached = cached_structural_result(cache, candidate.pair, structural)
             if cached is None:
                 raise RuntimeError(f"structural score unexpectedly missing for {candidate.pair}")
@@ -1155,7 +1381,7 @@ def step_run(run_dir: Path) -> dict[str, Any]:
                 configuration,
                 state,
                 cache,
-                sequences,
+                nodes,
                 protein_symbols,
                 eligible,
                 _load_disallowed(project, configuration),

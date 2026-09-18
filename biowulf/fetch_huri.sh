@@ -5,7 +5,9 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 output="${1:-$repo_root/runtime/reference/huri/HuRI.tsv}"
-url="${GBI_HURI_URL:-https://www.interactome-atlas.org/data/HuRI.tsv}"
+# The site's TLS certificate covers the apex hostname.  The historical
+# ``www.`` URL can fail certificate validation on Biowulf's curl build.
+url="${GBI_HURI_URL:-https://interactome-atlas.org/data/HuRI.tsv}"
 mkdir -p "$(dirname "$output")"
 temporary="${output}.download"
 trap 'rm -f -- "$temporary"' EXIT

@@ -28,6 +28,11 @@ edge ledger records the actual protocol/source. HuRI is an optional cheap edge
 stream. Reported pairs are positive evidence, while unreported pairs are
 neutral unless the user deliberately enables a scoped weak-negative rule.
 HuRI absence must never be described as a demonstrated negative experiment.
+When `substitute_for_structural` is enabled, a reported mapped HuRI positive
+with nonzero HuRI weight suppresses the AlphaPulldown request for that unordered
+pair. Its HuRI BF is applied exactly once in the cheap update and the structural
+BF remains neutral. A weak/nonreported HuRI factor never substitutes for a
+prediction, and a zero-weight HuRI stream cannot suppress structural work.
 Read `docs/V2_STORAGE_CACHE_HURI_2026-09-15.md` before modifying these rules.
 
 As of 2026-09-14, Version 2 also owns the upstream node-selection and cheap-edge
@@ -49,6 +54,10 @@ decisions. The live audit is `development_trace.html`; authoritative ledgers
 are the per-round TSVs and `development_events.jsonl`. See
 `docs/V2_STEPWISE_DEVELOPMENT_MODE.md`. Do not introduce different scientific
 equations into this mode: it is an observable execution of the same search.
+The `/api/v2/runs/<run>/frontier` endpoint and V2 run panel expose the top 20
+cheap candidates per current source, exact per-stream contributions, live ipTM
+files before collection, HuRI substitutions, and final retained/culled state.
+This display is observational only and must not alter search state.
 
 ## Current architecture
 
@@ -88,13 +97,18 @@ screened but reaches the solution set only if it survives global beam pruning.
 Raw structural scores are cached by unordered pair, protocol ID, and metric in
 `runtime/pair_cache.sqlite3`.
 
-A lab-specific Aqp2/collecting-duct profile additionally enables proteome and
-RNA abundance for CCD, OMCD, and IMCD. All six new streams plus the existing
-four select **3,330 proteins**, or **3,350 total nodes** with second messengers.
-This large profile is stored separately. The 891-node graph remains the
-immutable edge-catalog seed, but the current generic node defaults select
-1,051 proteins (1,071 nodes with messengers) after the site-centric
-phosphoprotein revision and therefore extend beyond that seed dynamically.
+The current Version 2 defaults intentionally mirror Version 1. All 12 node
+streams are enabled, including separate CCD/OMCD/IMCD proteome and RNA streams
+and separate PKA-Cα/PKA-Cβ phosphoprotein responses. Eligible nondetections are
+penalized, scaffold-mediated closure is enabled, and the default selection is
+**1,486 proteins plus 20 curated second messengers = 1,506 nodes**. The
+validated 891-node graph remains the immutable edge-catalog seed; new pairs
+incident to dynamically selected nodes are characterized and cached. The only
+intentional evidence-default difference from Version 1 is HPA localization:
+both HPA alternatives use `Tq × = 0.5` rather than 1.0. On the fixed 891-node
+seed, their calibration-preferred multiplier is also 0.5 so regularization does
+not pull HPA back to the less-sensitive setting. Fresh primary-HPA rescoring
+increases supported pairs from 35,935 at approximately 1.0 to 82,325 at 0.5.
 
 ## Bayesian conventions
 
@@ -181,19 +195,34 @@ Localization compatibility/adjacency matrices for mpkCCD, HPA, and COMPARTMENTS 
 
 The incremental raw-pair cache is `data/edge_characterization/incremental_edge_cache/edge_pair_cache.sqlite3`. It is a performance cache, not the only scientific record: each run also writes explicit configuration and audit outputs.
 
-## Scaffold closure: do not restore the rejected heuristic
+## Scaffold closure: physical anchors only
 
 The accepted optional rule is deliberately simple:
 
-1. Use only the **pre-closure** graph.
-2. A protein is an anchor to an exact `adaptor_scaffold` node only when their edge probability is strictly greater than the selected cutoff (default `0.90`).
-3. Two proteins qualify if they share at least one such scaffold.
+1. Use only explicit physical-interaction evidence; never use the integrated
+   cheap-edge graph as the anchor source.
+2. An AlphaPulldown/AlphaFold protein-scaffold anchor qualifies only when its
+   cached score is strictly greater than the selected cutoff (default `0.90`).
+   A reported-positive HuRI interaction qualifies directly. HuRI nonreports and
+   negative or low structural scores do not qualify.
+3. Two proteins qualify if both have a qualifying physical anchor to the same
+   exact `adaptor_scaffold` protein.
 4. Every qualifying pair receives fixed support likelihood `0.90`, equivalent to `BF = 0.90 / 0.50 = 1.8`; every other pair receives neutral `BF = 1`.
-5. Apply the rule once. Closure-derived edges never become new anchors.
+5. Apply the rule once per frontier. Closure-derived edges never become new
+   anchors. Newly imported AlphaPulldown results may become anchors in later
+   rounds through the persistent pair cache.
 
-There is **no scaffold-degree or “promiscuity” penalty, no anchor-excess score, no noisy-OR aggregation, and no empirical scaffold `T_q`**. Those earlier heuristics were rejected as insufficiently biologically justified. Closure is off by default and must be described as hypothesis-generating proximity/co-complex support, not proof of a direct PPI.
+There is **no scaffold-degree or “promiscuity” penalty, no anchor-excess score,
+no noisy-OR aggregation, and no empirical scaffold `T_q`**. Localization,
+STRING, OmniPath, kinase prediction, STITCH, and any combined nonstructural edge
+posterior are categorically excluded from anchor formation. Closure must be
+described as hypothesis-generating proximity/co-complex support, not proof of a
+direct PPI.
 
-Validation output: `results/gui_runs/scaffold_binary_closure_validation_20260804_v2/`. At defaults, 195 scaffold-tagged proteins yielded 14,308 qualifying protein–scaffold anchors, 205,920 qualifying protein pairs, and 81,323 pairs newly raised above probability 0.5.
+The older validation output at
+`results/gui_runs/scaffold_binary_closure_validation_20260804_v2/` used general
+pre-closure edge posteriors and is now **historical/superseded**. Its counts must
+not be reported as results of the physical-only rule.
 
 ## Target extension and path inference
 

@@ -94,12 +94,18 @@ Use the actual port printed for your job.  In the Version 2 page:
 3. Select **Initialize complete run**.
 4. Select **Run to checkpoint**.  Node selection, graph preparation, cheap
    evidence integration, directionality, and backward search run automatically.
+   In development mode, the run panel draws the top 20 candidates connected to
+   each frontier source. Select a candidate to inspect its exact evidence
+   factors and interpretation.
 5. When the state says that structural evidence is required, select **Submit
    AlphaPulldown**.  The controller submits the prepared CPU-feature and GPU
    Slurm arrays; it does not run those predictions inside the web server.
 6. Check the queue with `squeue -u $USER`.  After the arrays finish, select
    **Collect + continue**.  Repeat submit/collect only when the next frontier
    creates genuinely new pairs.  Cached unordered pairs are not recomputed.
+   The live graph detects compact ipTM files as tasks finish and previews which
+   candidates will strengthen or weaken before formal collection; final
+   retained/culled labels appear after collection and frontier selection.
 
 The GUI controller may be stopped while Slurm jobs run.  The run state is
 written atomically under `runs/`; restart the server and reopen the saved run
@@ -275,6 +281,11 @@ positive BF. Unreported pairs remain neutral by default because the public
 network is not a complete pair-level failed-test table. The GUI can apply a
 weak negative BF only within an explicit node scope; this assumption is written
 to every run's HuRI summary and evidence ledger.
+
+Leave **Verified HuRI positives replace AlphaPulldown** enabled to use a
+reported HuRI hit as the structural answer for that pair. The HuRI BF is counted
+once and the pair is omitted from the AlphaPulldown arrays. Unreported or weak-
+negative HuRI pairs still require AlphaPulldown when structurally applicable.
 
 See `docs/V2_STORAGE_CACHE_HURI_2026-09-15.md` for the complete scientific and
 storage rationale.

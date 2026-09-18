@@ -65,6 +65,7 @@ def build_huri_search_evidence(
     nonreported_bayes_factor: float,
     nonreported_scope: str = "neutral",
     screened_genes_file: Path | None = None,
+    substitute_for_structural: bool = True,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build sparse positive factors plus an optional node scope for negatives.
 
@@ -166,6 +167,7 @@ def build_huri_search_evidence(
         "nonreported_scope": nonreported_scope,
         "nonreported_scope_node_count": len(scope_symbols),
         "positive_bayes_factor": float(positive_bayes_factor),
+        "substitute_for_structural": bool(substitute_for_structural),
         "nonreported_bayes_factor": float(nonreported_bayes_factor),
         "positive_factor_file": str(factor_path),
         "scope_nodes_file": str(scope_path),
@@ -180,6 +182,7 @@ def build_huri_search_evidence(
     summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     stream = {
         "id": "huri_binary_interaction",
+        "physical_anchor_kind": "huri_reported_positive",
         "file": str(factor_path),
         "factor_column": "bayes_factor",
         "weight": 1.0,
@@ -188,4 +191,8 @@ def build_huri_search_evidence(
         "scope_symbol_column": "symbol",
         "scoped_missing_bayes_factor": float(nonreported_bayes_factor),
     }
+    if substitute_for_structural:
+        # Only a reported positive has BF > 1.0. Non-reporting, including a
+        # scoped weak negative, can never suppress structural prediction.
+        stream["structural_substitute_minimum_factor"] = 1.0
     return stream, summary

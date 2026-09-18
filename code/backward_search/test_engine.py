@@ -10,6 +10,7 @@ import pandas as pd
 
 from .engine import (
     PairCache,
+    build_physical_scaffold_closure_index,
     build_node_sequence_fasta,
     cached_structural_result,
     cleanup_run_features,
@@ -17,10 +18,13 @@ from .engine import (
     initialize_run,
     import_structural_scores,
     load_run_state,
+    load_configuration,
+    physical_scaffold_closure_factor,
     step_run,
     structural_bayes_factor,
+    structural_substitute_stream,
 )
-from .development import record_structural_import
+from .development import development_graph_payload, record_structural_import
 
 
 class BackwardSearchTests(unittest.TestCase):
@@ -29,9 +33,9 @@ class BackwardSearchTests(unittest.TestCase):
         self.project.mkdir(parents=True)
         nodes = pd.DataFrame(
             {
-                "symbol": ["END", "REC", "A", "B", "C"],
-                "node_type": ["protein"] * 5,
-                "classes": ["target", "receptor", "kinase", "kinase", "kinase"],
+                "symbol": ["END", "REC", "A", "B", "C", "S"],
+                "node_type": ["protein"] * 6,
+                "classes": ["target", "receptor", "kinase", "kinase", "kinase", "adaptor_scaffold"],
             }
         )
         nodes.to_csv(self.project / "nodes.tsv", sep="\t", index=False)
@@ -159,6 +163,24 @@ class BackwardSearchTests(unittest.TestCase):
         selection = pd.read_csv(round_dir / "cheap_selection.tsv", sep="\t")
         self.assertEqual(int(selection["selected_for_structural_stage"].sum()), 3)
 
+        live_pair = pd.read_csv(round_dir / "pairs.tsv", sep="\t").iloc[0]
+        live_output = round_dir / "models" / str(live_pair["pair_id"])
+        live_output.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"iptm": [0.73]}).to_csv(
+            live_output / "predictions_with_good_interpae.csv", index=False
+        )
+        live_graph = development_graph_payload(self.run_dir)
+        live_candidate = next(
+            item
+            for source in live_graph["sources"]
+            for item in source["candidates"]
+            if {item["source"], item["symbol"]}
+            == {str(live_pair["node_a"]), str(live_pair["node_b"])}
+        )
+        self.assertEqual(live_candidate["structural_status"], "completed_uncollected")
+        self.assertAlmostEqual(live_candidate["structural_score"], 0.73)
+        self.assertIsNotNone(live_candidate["combined_probability"])
+
         self._import_scores(
             [("END", "A", 0.55), ("END", "B", 0.90), ("END", "REC", 0.10)],
             "development_round0_scores.tsv",
@@ -176,6 +198,206 @@ class BackwardSearchTests(unittest.TestCase):
         events = (self.run_dir / "development_events.jsonl").read_text(encoding="utf-8")
         self.assertIn('"action": "select_frontier"', events)
         self.assertIn("edge_evidence_ledger.tsv", (self.run_dir / "development_trace.html").read_text(encoding="utf-8"))
+
+    def test_verified_huri_positive_replaces_structural_prediction_once(self) -> None:
+        pd.DataFrame(
+            [("END", "A", 5.0)],
+            columns=["node_a", "node_b", "bayes_factor"],
+        ).to_csv(self.project / "huri.tsv", sep="\t", index=False)
+        configuration = json.loads(self.config_path.read_text(encoding="utf-8"))
+        configuration["cheap_streams"].append({
+            "id": "huri_binary_interaction",
+            "file": "huri.tsv",
+            "weight": 1.0,
+            "missing_bayes_factor": 1.0,
+            "structural_substitute_minimum_factor": 1.0,
+        })
+        self.config_path.write_text(json.dumps(configuration), encoding="utf-8")
+        initialize_run(self.config_path, self.run_dir, development_mode=True)
+        for _ in range(4):
+            state = step_run(self.run_dir)
+        self.assertEqual(state["development_stage"], "integrate_edge_evidence")
+        self.assertEqual(state["pending_unique_structural_pairs"], 2)
+        round_dir = self.run_dir / "round_000"
+        pairs = pd.read_csv(round_dir / "pairs.tsv", sep="\t")
+        pair_sets = [set((row.node_a, row.node_b)) for row in pairs.itertuples()]
+        self.assertNotIn({"END", "A"}, pair_sets)
+        lookup = pd.read_csv(round_dir / "structural_cache_lookup.tsv", sep="\t")
+        a_row = lookup.loc[lookup["candidate_parent"] == "A"].iloc[0]
+        self.assertEqual(a_row["cache_status"], "substituted_by:huri_binary_interaction")
+        graph = development_graph_payload(self.run_dir)
+        candidate = next(
+            item for source in graph["sources"] for item in source["candidates"]
+            if item["symbol"] == "A"
+        )
+        self.assertEqual(candidate["structural_status"], "huri_substitute")
+        self.assertIn("AlphaPulldown skipped", candidate["interpretation"])
+
+        self._import_scores(
+            [(row.node_a, row.node_b, 0.6) for row in pairs.itertuples()],
+            "huri_substitution_pending_scores.tsv",
+        )
+        state = record_structural_import(self.run_dir, load_run_state(self.run_dir))
+        self.assertEqual(state["pending_unique_structural_pairs"], 0)
+        state = step_run(self.run_dir)
+        self.assertEqual(state["development_stage"], "select_frontier")
+        scored = pd.read_csv(round_dir / "scored_candidates.tsv", sep="\t")
+        a_scored = scored.loc[scored["candidate_parent"] == "A"].iloc[0]
+        self.assertEqual(
+            a_scored["structural_status"],
+            "substituted_by:huri_binary_interaction",
+        )
+        self.assertAlmostEqual(float(a_scored["structural_bayes_factor"]), 1.0)
+        self.assertAlmostEqual(
+            float(a_scored["combined_edge_probability"]),
+            float(a_scored["cheap_probability"]),
+        )
+
+    def test_zero_weight_reference_evidence_cannot_suppress_structural_work(self) -> None:
+        factors = {"huri_binary_interaction": 5.0}
+        stream = {
+            "id": "huri_binary_interaction",
+            "weight": 0.0,
+            "structural_substitute_minimum_factor": 1.0,
+        }
+        self.assertEqual(structural_substitute_stream(factors, [stream]), "")
+
+    def test_scaffold_closure_uses_only_physical_anchor_evidence(self) -> None:
+        # Deliberately give the ordinary cheap stream very strong END-S and A-S
+        # records. They must not seed physical scaffold closure.
+        pd.DataFrame(
+            [("END", "S", 100.0), ("A", "S", 100.0)],
+            columns=["node_a", "node_b", "bayes_factor"],
+        ).to_csv(self.project / "cheap.tsv", sep="\t", index=False)
+        configuration = json.loads(self.config_path.read_text(encoding="utf-8"))
+        closure_stream = {
+            "id": "scaffold_triadic_closure",
+            "derived_handler": "physical_scaffold_closure",
+            "weight": 1.0,
+            "missing_bayes_factor": 1.0,
+            "anchor_score_cutoff": 0.9,
+            "closure_likelihood": 0.9,
+        }
+        configuration["cheap_streams"].append(closure_stream)
+        self.config_path.write_text(json.dumps(configuration), encoding="utf-8")
+        _, normalized = load_configuration(self.config_path)
+        nodes = pd.read_csv(self.project / "nodes.tsv", sep="\t")
+        cache = PairCache(self.project / "physical_closure.sqlite3")
+        try:
+            cache.ingest_evidence(self.project, normalized["cheap_streams"])
+            index = build_physical_scaffold_closure_index(
+                cache, nodes, normalized, normalized["cheap_streams"][-1]
+            )
+            factor, observed, scaffolds, _ = physical_scaffold_closure_factor(
+                ("END", "A"), normalized["cheap_streams"][-1], index
+            )
+            self.assertEqual((factor, observed, scaffolds), (1.0, False, ()))
+
+            cache.import_structural(
+                pd.DataFrame([
+                    {"node_a": "END", "node_b": "S", "score": 0.95},
+                    {"node_a": "A", "node_b": "S", "score": 0.91},
+                    {"node_a": "B", "node_b": "S", "score": 0.90},
+                ]),
+                "test_protocol",
+                "iptm",
+                self.project / "physical.tsv",
+            )
+            index = build_physical_scaffold_closure_index(
+                cache, nodes, normalized, normalized["cheap_streams"][-1]
+            )
+            factor, observed, scaffolds, sources = physical_scaffold_closure_factor(
+                ("END", "A"), normalized["cheap_streams"][-1], index
+            )
+            self.assertAlmostEqual(factor, 1.8)
+            self.assertTrue(observed)
+            self.assertEqual(scaffolds, ("S",))
+            self.assertTrue(all("AlphaPulldown:test_protocol" in item for item in sources))
+            below_factor, below_observed, _, _ = physical_scaffold_closure_factor(
+                ("END", "B"), normalized["cheap_streams"][-1], index
+            )
+            self.assertEqual((below_factor, below_observed), (1.0, False))
+        finally:
+            cache.close()
+
+    def test_reported_positive_huri_can_seed_scaffold_closure(self) -> None:
+        pd.DataFrame(
+            [("END", "S", 5.0), ("A", "S", 5.0)],
+            columns=["node_a", "node_b", "bayes_factor"],
+        ).to_csv(self.project / "huri.tsv", sep="\t", index=False)
+        configuration = json.loads(self.config_path.read_text(encoding="utf-8"))
+        configuration["cheap_streams"].extend([
+            {
+                "id": "huri_binary_interaction",
+                "physical_anchor_kind": "huri_reported_positive",
+                "file": "huri.tsv",
+                "weight": 1.0,
+                "missing_bayes_factor": 1.0,
+                "structural_substitute_minimum_factor": 1.0,
+            },
+            {
+                "id": "scaffold_triadic_closure",
+                "derived_handler": "physical_scaffold_closure",
+                "weight": 1.0,
+                "missing_bayes_factor": 1.0,
+                "anchor_score_cutoff": 0.9,
+                "closure_likelihood": 0.9,
+            },
+        ])
+        self.config_path.write_text(json.dumps(configuration), encoding="utf-8")
+        _, normalized = load_configuration(self.config_path)
+        nodes = pd.read_csv(self.project / "nodes.tsv", sep="\t")
+        cache = PairCache(self.project / "huri_closure.sqlite3")
+        try:
+            cache.ingest_evidence(self.project, normalized["cheap_streams"])
+            closure_stream = normalized["cheap_streams"][-1]
+            index = build_physical_scaffold_closure_index(
+                cache, nodes, normalized, closure_stream
+            )
+            factor, observed, scaffolds, sources = physical_scaffold_closure_factor(
+                ("END", "A"), closure_stream, index
+            )
+            self.assertAlmostEqual(factor, 1.8)
+            self.assertTrue(observed)
+            self.assertEqual(scaffolds, ("S",))
+            self.assertTrue(all("HuRI:reported_positive" in item for item in sources))
+        finally:
+            cache.close()
+
+    def test_frontier_applies_physical_closure_and_records_scaffold(self) -> None:
+        configuration = json.loads(self.config_path.read_text(encoding="utf-8"))
+        configuration["pair_cache"] = "frontier_closure.sqlite3"
+        configuration["cheap_streams"].append({
+            "id": "scaffold_triadic_closure",
+            "derived_handler": "physical_scaffold_closure",
+            "weight": 1.0,
+            "missing_bayes_factor": 1.0,
+            "anchor_score_cutoff": 0.9,
+            "closure_likelihood": 0.9,
+        })
+        self.config_path.write_text(json.dumps(configuration), encoding="utf-8")
+        cache = PairCache(self.project / "frontier_closure.sqlite3")
+        try:
+            cache.import_structural(
+                pd.DataFrame([
+                    {"node_a": "END", "node_b": "S", "score": 0.95},
+                    {"node_a": "A", "node_b": "S", "score": 0.96},
+                ]),
+                "test_protocol",
+                "iptm",
+                self.project / "frontier_physical.tsv",
+            )
+        finally:
+            cache.close()
+        initialize_run(self.config_path, self.run_dir)
+        step_run(self.run_dir)
+        candidates = pd.read_csv(
+            self.run_dir / "round_000/cheap_candidates.tsv", sep="\t"
+        )
+        row = candidates.loc[candidates["candidate_parent"] == "A"].iloc[0]
+        self.assertAlmostEqual(float(row["bf_scaffold_triadic_closure"]), 1.8)
+        self.assertEqual(row["closure_supporting_scaffolds"], "S")
+        self.assertIn("AlphaPulldown:test_protocol", row["closure_anchor_sources"])
 
     def test_explicit_disallowed_backward_traversal_is_removed(self) -> None:
         direction = pd.DataFrame(

@@ -58,18 +58,48 @@ class WorkflowEngineTests(unittest.TestCase):
                 "pc_transcript",
                 "kinase_activity",
                 "phosphoprotein_response",
+                "pka_ca_ko_phosphoprotein_response",
+                "pka_cb_ko_phosphoprotein_response",
+                "collecting_duct_proteome_ccd",
+                "collecting_duct_proteome_omcd",
+                "collecting_duct_proteome_imcd",
+                "collecting_duct_rna_ccd",
+                "collecting_duct_rna_omcd",
+                "collecting_duct_rna_imcd",
             },
         )
-        for group in ("node_streams", "edge_streams"):
-            definitions = {item["id"]: item for item in self.registry[group]}
-            for stream_id, state in config[group].items():
-                has_control = definitions[stream_id]["normalization"].get(
-                    "user_control", True
-                )
-                if has_control:
-                    self.assertEqual(state["tq_multiplier"], 1.0)
-                else:
-                    self.assertNotIn("tq_multiplier", state)
+        self.assertEqual(
+            {
+                stream_id: state["tq_multiplier"]
+                for stream_id, state in config["node_streams"].items()
+            },
+            {
+                "protein_abundance": 0.1,
+                "pc_transcript": 0.6,
+                "kinase_activity": 0.1,
+                "phosphoprotein_response": 0.1,
+                "pka_ca_ko_phosphoprotein_response": 0.1,
+                "pka_cb_ko_phosphoprotein_response": 0.05,
+                "collecting_duct_proteome_ccd": 0.1,
+                "collecting_duct_proteome_omcd": 0.1,
+                "collecting_duct_proteome_imcd": 0.1,
+                "collecting_duct_rna_ccd": 0.5,
+                "collecting_duct_rna_omcd": 0.5,
+                "collecting_duct_rna_imcd": 0.5,
+            },
+        )
+        for stream_id, state in config["edge_streams"].items():
+            definition = next(
+                item for item in self.registry["edge_streams"]
+                if item["id"] == stream_id
+            )
+            if definition["normalization"].get("user_control", True):
+                expected = 0.5 if stream_id in {"hpa_primary", "hpa_high_confidence"} else 1.0
+                self.assertEqual(state["tq_multiplier"], expected)
+                if stream_id in {"hpa_primary", "hpa_high_confidence"}:
+                    self.assertEqual(state["preferred_tq_multiplier"], 0.5)
+            else:
+                self.assertNotIn("tq_multiplier", state)
         self.assertEqual(
             enabled_edges,
             {
@@ -79,6 +109,7 @@ class WorkflowEngineTests(unittest.TestCase):
                 "hpa_primary",
                 "omnipath_core",
                 "stitch_secondary_messenger",
+                "scaffold_triadic_closure",
             },
         )
         self.assertEqual(
@@ -125,7 +156,7 @@ class WorkflowEngineTests(unittest.TestCase):
                 "multistart_count": 2,
             },
         )
-        self.assertFalse(config["node_integration"]["penalize_unobserved"])
+        self.assertTrue(config["node_integration"]["penalize_unobserved"])
         self.assertEqual(
             config["node_integration"]["unobserved_bayes_factor"], 0.5
         )
@@ -569,8 +600,8 @@ class WorkflowEngineTests(unittest.TestCase):
         supplied["edge_streams"]["scaffold_triadic_closure"]["enabled"] = True
         config = normalize_configuration(supplied, self.registry)
         _, selected, _ = select_nodes(PROJECT_ROOT, self.registry, config)
-        self.assertEqual(len(selected), 3350)
-        self.assertEqual(len(selected) * (len(selected) - 1) // 2, 5_609_575)
+        self.assertEqual(len(selected), 1506)
+        self.assertEqual(len(selected) * (len(selected) - 1) // 2, 1_133_265)
 
     def test_path_ontology_class_selection_is_normalized_and_validated(self) -> None:
         supplied = default_configuration(self.registry)
@@ -594,16 +625,17 @@ class WorkflowEngineTests(unittest.TestCase):
         config = normalize_configuration(None, self.registry)
         factors, selected, summary = select_nodes(PROJECT_ROOT, self.registry, config)
         self.assertEqual(len(factors), 9170)
-        self.assertEqual(len(selected), 1071)
-        self.assertEqual(summary["selected_protein_count"], 1051)
-        self.assertEqual(summary["incrementally_added_protein_count"], 180)
+        self.assertEqual(len(selected), 1506)
+        self.assertEqual(summary["selected_protein_count"], 1486)
+        self.assertEqual(summary["incrementally_added_protein_count"], 881)
         self.assertEqual(summary["curated_second_messenger_count"], 20)
         self.assertTrue(summary["posterior_probabilities_are_independent"])
         self.assertEqual(summary["node_prior_probability"], 0.5)
         self.assertEqual(summary["node_output_probability_cutoff"], 0.5)
         self.assertTrue((factors["initial_prior"] == 0.5).all())
         self.assertTrue((factors["gui_initial_prior_probability"] == 0.5).all())
-        self.assertTrue((factors["gui_posterior"] >= 0.5).all())
+        self.assertTrue((factors["gui_posterior"] > 0.0).all())
+        self.assertTrue((factors["gui_posterior"] < 1.0).all())
         self.assertEqual(
             int((factors["gui_posterior"] > 0.5).sum()),
             summary["selected_protein_count"],
@@ -620,7 +652,7 @@ class WorkflowEngineTests(unittest.TestCase):
             distribution["above_output_cutoff_count"],
             summary["selected_protein_count"],
         )
-        self.assertEqual(distribution["below_prior_count"], 0)
+        self.assertEqual(distribution["below_prior_count"], 7681)
         for stream in summary["active_streams"]:
             factor_distribution = stream["factor_distribution"]
             self.assertEqual(factor_distribution["hypothesis_count"], len(factors))
@@ -642,6 +674,13 @@ class WorkflowEngineTests(unittest.TestCase):
         self.assertEqual(len(selected), 20)
 
     def test_optional_nondetection_evidence_can_lower_node_posteriors(self) -> None:
+        neutral_supplied = default_configuration(self.registry)
+        neutral_supplied["node_integration"]["penalize_unobserved"] = False
+        neutral_config = normalize_configuration(neutral_supplied, self.registry)
+        _, neutral_selected, neutral_summary = select_nodes(
+            PROJECT_ROOT, self.registry, neutral_config
+        )
+
         supplied = default_configuration(self.registry)
         supplied["node_integration"]["penalize_unobserved"] = True
         supplied["node_integration"]["unobserved_bayes_factor"] = 0.5
@@ -660,7 +699,11 @@ class WorkflowEngineTests(unittest.TestCase):
             summary["candidates_below_prior"],
         )
         self.assertLess(summary["posterior_minimum"], 0.5)
-        self.assertLess(summary["selected_protein_count"], 1051)
+        self.assertLess(
+            summary["selected_protein_count"],
+            neutral_summary["selected_protein_count"],
+        )
+        self.assertLess(len(selected), len(neutral_selected))
         self.assertEqual(len(selected), summary["selected_protein_count"] + 20)
 
         active_ids = [stream["id"] for stream in summary["active_streams"]]
@@ -743,12 +786,19 @@ class WorkflowEngineTests(unittest.TestCase):
 
     def test_protein_and_pc_only_configuration_is_valid_subset(self) -> None:
         supplied = default_configuration(self.registry)
-        supplied["node_streams"]["kinase_activity"]["enabled"] = False
-        supplied["node_streams"]["phosphoprotein_response"]["enabled"] = False
+        for stream_id in supplied["node_streams"]:
+            supplied["node_streams"][stream_id]["enabled"] = stream_id in {
+                "protein_abundance", "pc_transcript"
+            }
+        supplied["node_integration"]["penalize_unobserved"] = False
         config = normalize_configuration(supplied, self.registry)
         _, selected, summary = select_nodes(PROJECT_ROOT, self.registry, config)
-        self.assertEqual(len(selected), 675)
-        self.assertEqual(summary["selected_protein_count"], 655)
+        self.assertEqual(len(selected), 1254)
+        self.assertEqual(summary["selected_protein_count"], 1234)
+        self.assertEqual(
+            {item["id"] for item in summary["active_streams"]},
+            {"protein_abundance", "pc_transcript"},
+        )
 
     def test_default_edge_combination_reconstructs_current_graph(self) -> None:
         config = normalize_configuration(None, self.registry)
@@ -760,13 +810,13 @@ class WorkflowEngineTests(unittest.TestCase):
             selected["symbol"].tolist(),
         )
         values = matrix.to_numpy(float)
-        self.assertEqual(matrix.shape, (1071, 1071))
+        self.assertEqual(matrix.shape, (1506, 1506))
         self.assertTrue(np.array_equal(values, values.T))
-        self.assertTrue(np.array_equal(np.diag(values), np.zeros(1071)))
+        self.assertTrue(np.array_equal(np.diag(values), np.zeros(1506)))
         self.assertGreater(summary["pairs_above_output_cutoff"], 169414)
         distribution = summary["probability_distribution"]
-        self.assertEqual(distribution["hypothesis_count"], 572985)
-        self.assertEqual(sum(distribution["bin_counts"]), 572985)
+        self.assertEqual(distribution["hypothesis_count"], 1_133_265)
+        self.assertEqual(sum(distribution["bin_counts"]), 1_133_265)
         self.assertEqual(
             distribution["at_exact_prior_count"], summary["pairs_at_exact_prior"]
         )
@@ -776,8 +826,8 @@ class WorkflowEngineTests(unittest.TestCase):
         )
         for stream in summary["active_streams"]:
             factor_distribution = stream["factor_distribution"]
-            self.assertEqual(factor_distribution["hypothesis_count"], 572985)
-            self.assertEqual(sum(factor_distribution["bin_counts"]), 572985)
+            self.assertEqual(factor_distribution["hypothesis_count"], 1_133_265)
+            self.assertEqual(sum(factor_distribution["bin_counts"]), 1_133_265)
 
     def test_optional_edge_absence_penalty_lowers_only_eligible_pairs(self) -> None:
         supplied = default_configuration(self.registry)
@@ -952,7 +1002,7 @@ class WorkflowEngineTests(unittest.TestCase):
         }
         self.assertEqual(len(definitions), 6)
         self.assertTrue(
-            all(not config["node_streams"][stream_id]["enabled"] for stream_id in definitions)
+            all(config["node_streams"][stream_id]["enabled"] for stream_id in definitions)
         )
         self.assertEqual(
             {
@@ -976,7 +1026,7 @@ class WorkflowEngineTests(unittest.TestCase):
             self.assertTrue(np.all(sensitive >= original - 1e-14), stream_id)
             self.assertTrue(np.any(sensitive > original + 1e-14), stream_id)
 
-    def test_selective_pka_subunit_ko_streams_are_separate_and_optional(self) -> None:
+    def test_selective_pka_subunit_ko_streams_are_separate(self) -> None:
         stream_ids = {
             "pka_ca_ko_phosphoprotein_response",
             "pka_cb_ko_phosphoprotein_response",
@@ -994,21 +1044,21 @@ class WorkflowEngineTests(unittest.TestCase):
 
         supplied = default_configuration(self.registry)
         self.assertTrue(
-            all(not supplied["node_streams"][stream_id]["enabled"] for stream_id in stream_ids)
+            all(supplied["node_streams"][stream_id]["enabled"] for stream_id in stream_ids)
         )
-        for stream_id in stream_ids:
-            supplied["node_streams"][stream_id]["enabled"] = True
+        for stream_id in supplied["node_streams"]:
+            supplied["node_streams"][stream_id]["enabled"] = stream_id in stream_ids
         config = normalize_configuration(supplied, self.registry)
         factors, selected, summary = select_nodes(PROJECT_ROOT, self.registry, config)
 
         self.assertEqual(len(factors), 9170)
-        self.assertEqual(summary["selected_protein_count"], 1232)
-        self.assertEqual(len(selected), 1252)
+        self.assertEqual(len(selected), summary["selected_protein_count"] + 20)
         expected_counts = {
-            "pka_ca_ko_phosphoprotein_response": (776, 267),
-            "pka_cb_ko_phosphoprotein_response": (776, 261),
+            "pka_ca_ko_phosphoprotein_response": (776, 708),
+            "pka_cb_ko_phosphoprotein_response": (776, 748),
         }
         active = {item["id"]: item for item in summary["active_streams"]}
+        self.assertEqual(set(active), stream_ids)
         for stream_id, (observed_count, positive_count) in expected_counts.items():
             definition = definitions[stream_id]
             self.assertEqual(
@@ -1106,10 +1156,10 @@ class WorkflowEngineTests(unittest.TestCase):
 
     def test_scaffold_closure_is_binary_one_pass_protein_evidence(self) -> None:
         symbols = ["A", "B", "C", "S", "cyclic AMP"]
-        probabilities = np.full((5, 5), 0.5, dtype=float)
-        probabilities[0, 3] = probabilities[3, 0] = 0.98
-        probabilities[1, 3] = probabilities[3, 1] = 0.97
-        probabilities[2, 3] = probabilities[3, 2] = 0.91
+        physical_scores = np.zeros((5, 5), dtype=float)
+        physical_scores[0, 3] = physical_scores[3, 0] = 0.98
+        physical_scores[1, 3] = physical_scores[3, 1] = 0.97
+        physical_scores[2, 3] = physical_scores[3, 2] = 0.91
         metadata = pd.DataFrame(
             {
                 "symbol": symbols,
@@ -1127,7 +1177,7 @@ class WorkflowEngineTests(unittest.TestCase):
         audit, summary = scaffold_triadic_closure_factors(
             PROJECT_ROOT,
             symbols,
-            probabilities,
+            physical_scores,
             state,
             graph_metadata=metadata,
         )
@@ -1163,43 +1213,51 @@ class WorkflowEngineTests(unittest.TestCase):
             if stream["id"] == "scaffold_triadic_closure"
         )
         self.assertTrue(closure["derived"])
-        self.assertGreater(len(audits["scaffold_triadic_closure"]), 0)
-        self.assertGreaterEqual(summary["pairs_above_output_cutoff"], 169414)
+        self.assertEqual(len(audits["scaffold_triadic_closure"]), 0)
+        self.assertEqual(
+            closure["derivation_summary"]["status"],
+            "deferred_no_physical_anchor_matrix",
+        )
 
-    def test_lower_localization_tq_increases_supported_pairs(self) -> None:
+    def test_lower_hpa_tq_increases_supported_pairs(self) -> None:
         config = normalize_configuration(None, self.registry)
-        _, selected, _ = select_nodes(PROJECT_ROOT, self.registry, config)
+        symbols = pd.read_csv(
+            PROJECT_ROOT / "data/node_selection/node_universe_combined_nonzero.tsv",
+            sep="\t",
+            dtype=str,
+        )["symbol"].drop_duplicates().tolist()
         definition = next(
             stream
             for stream in self.registry["edge_streams"]
-            if stream["id"] == "mpkccd_localization"
+            if stream["id"] == "hpa_primary"
         )
-        default_table = edge_stream_factor_table(
+        reference_state = dict(config["edge_streams"]["hpa_primary"])
+        reference_state["tq_multiplier"] = 1.000001
+        reference_table = edge_stream_factor_table(
             PROJECT_ROOT,
             definition,
-            config["edge_streams"]["mpkccd_localization"],
-            selected["symbol"].tolist(),
+            reference_state,
+            symbols,
         )
-        sensitive_state = dict(config["edge_streams"]["mpkccd_localization"])
-        sensitive_state["tq_multiplier"] = 0.8
+        sensitive_state = dict(config["edge_streams"]["hpa_primary"])
+        self.assertEqual(sensitive_state["tq_multiplier"], 0.5)
         sensitive_table = edge_stream_factor_table(
             PROJECT_ROOT,
             definition,
             sensitive_state,
-            selected["symbol"].tolist(),
+            symbols,
         )
-        self.assertGreater(len(sensitive_table), len(default_table))
+        self.assertGreater(len(sensitive_table), len(reference_table))
 
     def test_more_sensitive_node_setting_adds_nodes_beyond_seed(self) -> None:
         supplied = default_configuration(self.registry)
-        supplied["node_streams"]["protein_abundance"]["tq_multiplier"] = 0.95
+        supplied["node_streams"]["protein_abundance"]["tq_multiplier"] = 0.05
         config = normalize_configuration(supplied, self.registry)
         factors, selected, summary = select_nodes(PROJECT_ROOT, self.registry, config)
-        # With the current objective 0.5 prior and strict posterior > 0.5
-        # selection rule, any net-positive BF support is sufficient.  Lowering
-        # this Tq therefore adds 188 proteins beyond the immutable 891-node seed.
-        self.assertEqual(len(selected), 1079)
-        self.assertEqual(summary["incrementally_added_protein_count"], 188)
+        # Lowering the Version 1 protein-abundance multiplier from 0.10 to the
+        # validated minimum 0.05 makes that stream more sensitive.
+        self.assertEqual(len(selected), 1518)
+        self.assertEqual(summary["incrementally_added_protein_count"], 892)
         self.assertTrue(
             factors.loc[
                 factors["gene_symbol"].isin(selected["symbol"]),
@@ -1219,9 +1277,8 @@ class WorkflowEngineTests(unittest.TestCase):
         )["symbol"].tolist()
         ensure_incremental_pairs(PROJECT_ROOT, selected, seed)
         update = ensure_incremental_pairs(PROJECT_ROOT, selected, seed)
-        expected_incremental_pairs = (
-            len(selected) * (len(selected) - 1) // 2
-            - len(seed) * (len(seed) - 1) // 2
+        expected_incremental_pairs = incremental_pair_count(
+            selected["symbol"].astype(str).tolist(), set(seed)
         )
         self.assertEqual(update.requested_incremental_pairs, expected_incremental_pairs)
         self.assertEqual(update.newly_characterized_pairs, 0)

@@ -105,6 +105,13 @@ A reported mapped pair receives the configurable `positive_bayes_factor`
 heuristics, not an experimentally estimated likelihood ratio, and should be
 calibrated or varied in sensitivity analyses.
 
+By default, a verified reported HuRI positive also serves as a structural
+substitute. The HuRI BF is already applied once during cheap-edge integration,
+so the pair is omitted from the AlphaPulldown manifest and receives no second
+structural contribution. The audit records
+`substituted_by:huri_binary_interaction`. This substitution requires a positive
+HuRI stream weight; setting the weight to zero cannot suppress AlphaPulldown.
+
 HuRI does **not** provide a complete public pair-level table saying that every
 unreported pair was tested successfully and found not to interact. It is also
 an incomplete yeast-two-hybrid map. Therefore absence is neutral by default.
@@ -121,6 +128,8 @@ remain neutral. A sparse positive-factor table, scope-node table, mapping
 counts, chosen assumption, and caveat are written under the run's
 `huri_evidence/` directory. The stepwise cheap-evidence ledger marks each row
 as a reported record, a scoped non-report, or an out-of-scope neutral absence.
+Neither neutral absence nor a scoped weak-negative nonreport qualifies as a
+structural substitute.
 
 Download the published table on a login node with:
 

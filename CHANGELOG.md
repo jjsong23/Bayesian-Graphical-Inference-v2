@@ -4,7 +4,44 @@ This file summarizes user-visible and scientifically meaningful code changes.
 The canonical takeover instructions remain in `CODEX_PROJECT_CONTEXT.md`; dated
 implementation detail is retained under `docs/lab_notebook/`.
 
+## 2026-09-18
+
+### Physical-only scaffold-mediated closure
+
+- Restricted scaffold-mediated closure to physical protein-scaffold anchors.
+  Qualifying anchors are now either accepted-protocol AlphaPulldown/AlphaFold
+  scores strictly above the selected cutoff or reported-positive HuRI pairs.
+- Removed the integrated cheap-edge posterior as a possible closure anchor.
+  Localization, STRING, OmniPath, kinase prediction, STITCH, and other
+  nonstructural evidence can no longer create scaffold closure indirectly.
+- Made closure a dynamic Version 2 frontier stream backed by the persistent
+  pair cache, so prior and newly collected structural results can support later
+  rounds without recomputation. Audits retain the shared scaffold and exact
+  physical source for both anchors.
+- The full-matrix workflow now leaves closure neutral when no explicit physical
+  anchor matrix is supplied instead of treating general edge posteriors as
+  evidence of physical proximity.
+
 ## 2026-09-17
+
+### Version 1 defaults, HuRI structural substitution, and live frontier graph
+
+- Synchronized Version 2's registered node, edge, integration, ontology, and
+  path defaults with Version 1. The intentional exception is HPA localization:
+  primary and high-confidence alternatives now default to `Tq × = 0.5` for a
+  more sensitive localization screen, and their calibration-preferred value is
+  likewise 0.5.
+- Added an auditable HuRI/AlphaPulldown redundancy rule. A verified reported
+  HuRI positive can replace structural prediction for the same unordered pair;
+  the HuRI BF is counted once and no structural BF is added. Nonreports, weak
+  negatives, and zero-weight HuRI evidence cannot suppress AlphaPulldown.
+- Added a live Version 2 frontier graph for up to 20 ranked candidates per
+  source node, including exact cheap-evidence interpretations, cached/pending/
+  completed structural state, HuRI substitutions, provisional posteriors from
+  completed ipTM files, and final retained/culled decisions.
+- Added regression coverage for HPA sensitivity, default parity, HuRI
+  substitution without double-counting, zero-weight safety, and live
+  pre-collection structural-score detection.
 
 ### Auditable reduced-database feature regeneration
 

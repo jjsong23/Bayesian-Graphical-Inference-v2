@@ -75,7 +75,7 @@ CancelCallback = Callable[[], bool]
 
 DEFAULT_BACKWARD_OPTIONS: dict[str, Any] = {
     "target": "Aqp2",
-    "receptor": "Avpr2",
+    "receptor": "Prkaca",
     "cheap_top_n_per_frontier": 20,
     "beam_width": 5,
     "maximum_depth": 6,
@@ -88,6 +88,7 @@ DEFAULT_BACKWARD_OPTIONS: dict[str, Any] = {
         "mapping_file": "data/edge_characterization/localization/hpa/v25.1/processed/mouse_human_hpa_mapping.tsv",
         "weight": 1.0,
         "positive_bayes_factor": 5.0,
+        "substitute_for_structural": True,
         "nonreported_scope": "neutral",
         "nonreported_bayes_factor": 0.9,
         "screened_genes_file": "",
@@ -221,6 +222,9 @@ def normalize_backward_options(value: dict[str, Any] | None) -> dict[str, Any]:
         raise ValueError("structural metric and protocol_id are required")
     huri = options["huri"]
     huri["enabled"] = bool(huri.get("enabled", False))
+    huri["substitute_for_structural"] = bool(
+        huri.get("substitute_for_structural", True)
+    )
     huri["interactions_file"] = str(huri.get("interactions_file", "")).strip()
     huri["mapping_file"] = str(huri.get("mapping_file", "")).strip()
     huri["screened_genes_file"] = str(huri.get("screened_genes_file", "")).strip()
@@ -541,14 +545,29 @@ def initialize_end_to_end_pipeline(
         _check_cancel(cancel_requested)
         _update(progress, "Integrating configurable inexpensive edge evidence", 0.48)
         contributions: dict[str, np.ndarray] = {}
-        matrix, edge_summary = combine_edge_factors(
-            project,
-            registry,
-            bayesian,
-            symbols,
-            graph_metadata=graph_metadata,
-            contribution_collector=contributions,
+        closure_state = bayesian["edge_streams"].get("scaffold_triadic_closure")
+        closure_requested = bool(
+            closure_state
+            and closure_state["enabled"]
+            and float(closure_state["weight"]) > 0.0
         )
+        closure_original_enabled = bool(closure_state and closure_state["enabled"])
+        if closure_state is not None:
+            # V2 closure is evaluated later from physical anchors in the pair
+            # cache.  It must never be derived from this all-evidence matrix.
+            closure_state["enabled"] = False
+        try:
+            matrix, edge_summary = combine_edge_factors(
+                project,
+                registry,
+                bayesian,
+                symbols,
+                graph_metadata=graph_metadata,
+                contribution_collector=contributions,
+            )
+        finally:
+            if closure_state is not None:
+                closure_state["enabled"] = closure_original_enabled
         matrix.to_csv(run_dir / "cheap_edge_posteriors.tsv.gz", sep="\t", compression="gzip", float_format="%.9g")
         streams, stream_manifest = _export_applied_edge_streams(
             run_dir, symbols, registry, bayesian, contributions
@@ -560,6 +579,14 @@ def initialize_end_to_end_pipeline(
             interactions_path = Path(huri_config["interactions_file"])
             if not interactions_path.is_absolute():
                 interactions_path = project / interactions_path
+            if not interactions_path.is_file():
+                raise FileNotFoundError(
+                    "HuRI evidence is enabled, but its interaction table is missing: "
+                    f"{interactions_path}. On Biowulf, run `bash biowulf/fetch_huri.sh` "
+                    "from the Version 2 repository, verify the file, and then initialize "
+                    "a new run. A run that already failed during initialization cannot be "
+                    "resumed by merely adding the missing input."
+                )
             mapping_path = Path(huri_config["mapping_file"])
             if not mapping_path.is_absolute():
                 mapping_path = project / mapping_path
@@ -577,8 +604,10 @@ def initialize_end_to_end_pipeline(
                 nonreported_bayes_factor=huri_config["nonreported_bayes_factor"],
                 nonreported_scope=huri_config["nonreported_scope"],
                 screened_genes_file=screened_path,
+                substitute_for_structural=huri_config["substitute_for_structural"],
             )
             huri_stream["weight"] = float(huri_config["weight"])
+            huri_stream["physical_anchor_kind"] = "huri_reported_positive"
             streams.append(huri_stream)
             stream_manifest.append({
                 "id": huri_stream["id"],
@@ -588,8 +617,50 @@ def initialize_end_to_end_pipeline(
                 "factor_file": huri_stream["file"],
                 "scope_nodes_file": huri_stream["scope_nodes_file"],
                 "scoped_missing_bayes_factor": huri_stream["scoped_missing_bayes_factor"],
+                "substitute_for_structural": huri_config["substitute_for_structural"],
                 "note": huri_summary["scope_note"],
             })
+        if closure_requested and closure_state is not None:
+            closure_parameters = closure_state.get("parameters", {})
+            closure_stream = {
+                "id": "scaffold_triadic_closure",
+                "derived_handler": "physical_scaffold_closure",
+                "weight": float(closure_state["weight"]),
+                "missing_bayes_factor": 1.0,
+                "scoped_missing_bayes_factor": 1.0,
+                "anchor_score_cutoff": float(
+                    closure_parameters.get("anchor_probability_cutoff", 0.9)
+                ),
+                "closure_likelihood": float(
+                    closure_parameters.get("closure_likelihood", 0.9)
+                ),
+            }
+            streams.append(closure_stream)
+            stream_manifest.append({
+                "id": closure_stream["id"],
+                "label": "Scaffold-mediated closure (physical anchors only)",
+                "weight": closure_stream["weight"],
+                "non_neutral_pair_count": None,
+                "factor_file": None,
+                "anchor_score_cutoff_exclusive": closure_stream["anchor_score_cutoff"],
+                "closure_likelihood": closure_stream["closure_likelihood"],
+                "closure_bayes_factor": closure_stream["closure_likelihood"] / 0.5,
+                "note": (
+                    "Evaluated dynamically at each frontier. A pair qualifies only "
+                    "when both proteins have a qualifying AlphaPulldown/AlphaFold "
+                    "score or reported-positive HuRI interaction to the same exact "
+                    "adaptor_scaffold node. Other edge streams cannot create anchors."
+                ),
+            })
+            edge_summary.setdefault("deferred_streams", []).append(
+                stream_manifest[-1]
+            )
+            edge_summary["integration_rule"] += (
+                " Scaffold-mediated closure is not derived from the integrated "
+                "cheap-edge matrix in Version 2; it is evaluated during frontier "
+                "search from cached AlphaPulldown/AlphaFold predictions and "
+                "reported-positive HuRI interactions only."
+            )
         _write_json(run_dir / "cheap_edge_stream_manifest.json", stream_manifest)
 
         _check_cancel(cancel_requested)

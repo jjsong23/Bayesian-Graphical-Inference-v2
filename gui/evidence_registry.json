@@ -17,7 +17,7 @@
       "normalization": {
         "handler": "protein_abundance",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.1,
         "reference": "q75 = 1.263034e9 linear abundance",
         "help": "Multiplies the empirical q75 threshold calculated from all finite back-transformed protein abundances."
       }
@@ -38,7 +38,7 @@
       "normalization": {
         "handler": "pc_transcript",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.6,
         "reference": "q75 = 7.1225 TPM",
         "help": "Multiplies the empirical q75 threshold calculated from positive principal-cell TPM values; zero measurements remain neutral."
       }
@@ -61,7 +61,7 @@
       "normalization": {
         "handler": "kinase_activity",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.1,
         "calibration_preferred_multiplier": 0.1,
         "calibration_bounds": [0.05, 1.0],
         "reference": "q75 = 0.17 absolute LFC",
@@ -85,7 +85,7 @@
       "normalization": {
         "handler": "phosphoprotein_response",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.1,
         "calibration_preferred_multiplier": 0.1,
         "calibration_bounds": [0.05, 1.0],
         "reference": "single all-phosphosite q75; no site-count adjustment",
@@ -102,7 +102,7 @@
       "observed_column": "pka_ca_ko_observed",
       "tq_column": "pka_ca_ko_site_tq",
       "neutral_value": 1.0,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "pka_subunit_ko_phosphoproteomics",
       "negative_evidence": {
@@ -113,7 +113,7 @@
       "normalization": {
         "handler": "site_level_phosphoprotein_response",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.1,
         "calibration_preferred_multiplier": 0.1,
         "calibration_bounds": [0.05, 1.0],
         "reference": "single source-site q75 = 0.226039 absolute LFC; no site-count adjustment",
@@ -130,7 +130,7 @@
       "observed_column": "pka_cb_ko_observed",
       "tq_column": "pka_cb_ko_site_tq",
       "neutral_value": 1.0,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "pka_subunit_ko_phosphoproteomics",
       "negative_evidence": {
@@ -141,7 +141,7 @@
       "normalization": {
         "handler": "site_level_phosphoprotein_response",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.05,
         "calibration_preferred_multiplier": 0.1,
         "calibration_bounds": [0.05, 1.0],
         "reference": "single source-site q75 = 0.183712 absolute LFC; no site-count adjustment",
@@ -158,13 +158,13 @@
       "observed_column": "cd_proteome_ccd_observed",
       "tq_column": "cd_proteome_ccd_tq",
       "neutral_value": 0.5,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "ktea_collecting_duct_proteome",
       "normalization": {
         "handler": "collecting_duct_abundance",
         "control_label": "Tq x",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.1,
         "reference": "positive-value q75 = 66565.7131 abundance units",
         "help": "Multiplies the CCD-specific q75 derived from all positive rat-proteome measurements; zero/nondetected values stay neutral."
       }
@@ -179,13 +179,13 @@
       "observed_column": "cd_proteome_omcd_observed",
       "tq_column": "cd_proteome_omcd_tq",
       "neutral_value": 0.5,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "ktea_collecting_duct_proteome",
       "normalization": {
         "handler": "collecting_duct_abundance",
         "control_label": "Tq x",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.1,
         "reference": "positive-value q75 = 70816.4444 abundance units",
         "help": "Multiplies the OMCD-specific q75 derived from all positive rat-proteome measurements; zero/nondetected values stay neutral."
       }
@@ -200,13 +200,13 @@
       "observed_column": "cd_proteome_imcd_observed",
       "tq_column": "cd_proteome_imcd_tq",
       "neutral_value": 0.5,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "ktea_collecting_duct_proteome",
       "normalization": {
         "handler": "collecting_duct_abundance",
         "control_label": "Tq x",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.1,
         "reference": "positive-value q75 = 65193.9136 abundance units",
         "help": "Multiplies the IMCD-specific q75 derived from all positive rat-proteome measurements; zero/nondetected values stay neutral."
       }
@@ -221,13 +221,13 @@
       "observed_column": "cd_rna_ccd_observed",
       "tq_column": "cd_rna_ccd_tq",
       "neutral_value": 0.5,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "mouse_renal_tubule_rna_seq",
       "normalization": {
         "handler": "collecting_duct_abundance",
         "control_label": "Tq x",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.5,
         "reference": "positive-value q75 = 22.9 RNA abundance units",
         "help": "Multiplies the CCD-specific q75 derived from all positive RNA measurements; zero/nondetected values stay neutral."
       }
@@ -242,13 +242,13 @@
       "observed_column": "cd_rna_omcd_observed",
       "tq_column": "cd_rna_omcd_tq",
       "neutral_value": 0.5,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "mouse_renal_tubule_rna_seq",
       "normalization": {
         "handler": "collecting_duct_abundance",
         "control_label": "Tq x",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.5,
         "reference": "positive-value q75 = 9.2 RNA abundance units",
         "help": "Multiplies the OMCD-specific q75 derived from all positive RNA measurements; zero/nondetected values stay neutral."
       }
@@ -263,13 +263,13 @@
       "observed_column": "cd_rna_imcd_observed",
       "tq_column": "cd_rna_imcd_tq",
       "neutral_value": 0.5,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
       "dependence_group": "mouse_renal_tubule_rna_seq",
       "normalization": {
         "handler": "collecting_duct_abundance",
         "control_label": "Tq x",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.5,
         "reference": "positive-value q75 = 11.7 RNA abundance units",
         "help": "Multiplies the IMCD-specific q75 derived from all positive RNA measurements; zero/nondetected values stay neutral."
       }
@@ -358,9 +358,10 @@
       "normalization": {
         "handler": "hpa_primary",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.5,
+        "calibration_preferred_multiplier": 0.5,
         "reference": "per-node q75 cosine-similarity thresholds",
-        "help": "Multiplies HPA primary-profile thresholds before reciprocal symmetrization."
+        "help": "Multiplies HPA primary-profile thresholds before reciprocal symmetrization. Lower values are more sensitive because a smaller similarity threshold gives more pairs BF > 1."
       }
     },
     {
@@ -380,9 +381,10 @@
       "normalization": {
         "handler": "hpa_high_confidence",
         "control_label": "Tq ×",
-        "default_multiplier": 1.0,
+        "default_multiplier": 0.5,
+        "calibration_preferred_multiplier": 0.5,
         "reference": "per-node q75 cosine-similarity thresholds",
-        "help": "Multiplies HPA Enhanced/Supported-profile thresholds before reciprocal symmetrization."
+        "help": "Multiplies HPA Enhanced/Supported-profile thresholds before reciprocal symmetrization. Lower values are more sensitive because a smaller similarity threshold gives more pairs BF > 1."
       }
     },
     {
@@ -430,11 +432,11 @@
     {
       "id": "scaffold_triadic_closure",
       "label": "Scaffold-mediated closure",
-      "description": "Fixed one-pass evidence for protein pairs that each have a strong edge to the same adaptor/scaffold.",
+      "description": "Fixed one-pass evidence for protein pairs that each have a physically supported interaction with the same adaptor/scaffold. Only AlphaFold/AlphaPulldown predictions and reported-positive HuRI interactions can create anchors.",
       "derived": true,
-      "default_enabled": false,
+      "default_enabled": true,
       "default_weight": 1.0,
-      "dependence_group": "derived_from_selected_edge_graph",
+      "dependence_group": "derived_from_physical_interaction_evidence",
       "parameters": [
         {
           "id": "anchor_probability_cutoff",
@@ -443,7 +445,7 @@
           "minimum": 0.5,
           "maximum": 0.999,
           "step": 0.01,
-          "help": "A protein-scaffold edge must exceed this pre-closure probability before it can support closure."
+          "help": "An AlphaFold/AlphaPulldown protein-scaffold score must be strictly above this cutoff. Reported-positive HuRI interactions qualify directly. Other evidence cannot create an anchor."
         },
         {
           "id": "closure_likelihood",
@@ -460,8 +462,8 @@
         "user_control": false,
         "control_label": "",
         "default_multiplier": 1.0,
-        "reference": "Binary shared-scaffold rule; no empirical Tq or scaffold-degree penalty",
-        "help": "Closure uses the Anchor and Support L controls and is calculated once without recursive feedback."
+        "reference": "Binary shared-scaffold rule using physical interaction evidence only; no empirical Tq or scaffold-degree penalty",
+        "help": "Closure uses accepted AlphaFold/AlphaPulldown results and reported-positive HuRI interactions only. It is calculated once per frontier without recursive feedback."
       }
     }
   ],
@@ -555,21 +557,21 @@
       "label": "Second-messenger binding",
       "roots": ["GO:0030551", "GO:0005516"],
       "description": "Cyclic-nucleotide and calmodulin binding activities.",
-      "default_enabled": true
+      "default_enabled": false
     },
     {
       "id": "signaling_process",
       "label": "Signaling process",
       "roots": ["GO:0023052", "GO:0007165", "GO:0035556", "GO:0007154"],
       "description": "Broad signaling, signal transduction, intracellular signaling, and cell communication processes.",
-      "default_enabled": true
+      "default_enabled": false
     },
     {
       "id": "signaling_regulation",
       "label": "Signaling regulation",
       "roots": ["GO:0009966"],
       "description": "Regulation of signal transduction.",
-      "default_enabled": true
+      "default_enabled": false
     },
     {
       "id": "second_messenger",
@@ -591,7 +593,7 @@
     "node_non_neutral_tolerance": 1e-12,
     "node_prior_probability": 0.5,
     "node_probability_cutoff": 0.5,
-    "penalize_unobserved_nodes": false,
+    "penalize_unobserved_nodes": true,
     "unobserved_node_bayes_factor": 0.5,
     "continuous_negative_node_evidence": false,
     "continuous_node_bayes_factor_floor": 1e-6,
@@ -601,9 +603,9 @@
     "unsupported_edge_bayes_factor": 0.5,
     "continuous_negative_edge_evidence": false,
     "continuous_edge_bayes_factor_floor": 1e-6,
-    "start_node": "Prkaca",
-    "target_node": "Aqp2",
-    "top_k_paths": 25,
+    "start_node": "Aqp2",
+    "target_node": "Prkaca",
+    "top_k_paths": 100,
     "maximum_hops": 6,
     "path_minimum_edge_probability": 0.5,
     "ontology_directionality_enabled": true,

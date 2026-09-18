@@ -708,8 +708,8 @@ def normalize_configuration(
     edge_defs = {stream["id"]: stream for stream in registry["edge_streams"]}
     if all(edge_defs[stream_id].get("derived") for stream_id in effective_edges):
         raise ValueError(
-            "scaffold closure requires at least one non-derived edge stream to "
-            "construct its pre-closure graph"
+            "scaffold closure is conditional physical-proximity evidence and cannot "
+            "be the only edge stream; enable at least one primary edge stream"
         )
     exclusive: dict[str, list[str]] = {}
     for stream_id in effective_edges:
@@ -2541,20 +2541,23 @@ def calibrate_edge_parameters(
 def scaffold_triadic_closure_factors(
     project: Path,
     graph_symbols: list[str],
-    preclosure_probabilities: np.ndarray,
+    physical_anchor_scores: np.ndarray,
     state: dict[str, Any],
     *,
     graph_metadata: pd.DataFrame | None = None,
+    preclosure_probabilities: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Assign one fixed factor to every protein pair sharing a strong scaffold.
+    """Assign one fixed factor to protein pairs sharing physical scaffold anchors.
 
     Only protein nodes can be endpoints or common scaffolds. A common node must
     contain the exact ``adaptor_scaffold`` class token. A pair qualifies when
-    both of its protein-scaffold probabilities are strictly above the selected
-    anchor cutoff for at least one shared scaffold. Every qualifying pair gets
-    the same configured support likelihood relative to the neutral likelihood;
-    scaffold degree and the number of shared scaffolds do not change the factor.
-    The operation is one pass, so inferred closure edges never become anchors.
+    both protein-scaffold physical-interaction scores are strictly above the
+    selected anchor cutoff for at least one shared scaffold. The supplied score
+    matrix must contain AlphaFold/AlphaPulldown or reported-positive HuRI physical
+    evidence only; integrated localization or functional-edge posteriors are not
+    valid inputs. Every qualifying pair gets the same configured support
+    likelihood relative to the neutral likelihood. The operation is one pass,
+    so inferred closure edges never become anchors.
     """
     symbols = list(graph_symbols)
     metadata = _metadata_for_graph(project, symbols, graph_metadata)
@@ -2597,9 +2600,10 @@ def scaffold_triadic_closure_factors(
         raise ValueError("closure likelihood must be at least 0.5 and below 1.0")
     closure_factor = closure_likelihood / NEUTRAL_LIKELIHOOD
     rule_text = (
-        "Both protein-scaffold probabilities must be strictly above the anchor "
-        "cutoff for at least one shared adaptor_scaffold; every qualifying pair "
-        "receives the same factor in one non-recursive pass."
+        "Both protein-scaffold physical-interaction scores must be strictly above "
+        "the anchor cutoff for at least one shared adaptor_scaffold. Only accepted "
+        "AlphaFold/AlphaPulldown predictions or reported-positive HuRI interactions "
+        "may populate the anchor matrix."
     )
     empty_summary = {
         "scaffold_node_count": int(len(scaffold_indices)),
@@ -2617,7 +2621,7 @@ def scaffold_triadic_closure_factors(
     if len(protein_indices) < 2 or not len(scaffold_indices):
         return pd.DataFrame(columns=columns), empty_summary
 
-    association = preclosure_probabilities[np.ix_(protein_indices, scaffold_indices)]
+    association = physical_anchor_scores[np.ix_(protein_indices, scaffold_indices)]
     anchors = association > anchor_cutoff
     partner_counts = anchors.sum(axis=0)
     usable = np.flatnonzero(partner_counts >= 2)
@@ -2641,9 +2645,13 @@ def scaffold_triadic_closure_factors(
         {
             "node_a": protein_symbols[rows_i],
             "node_b": protein_symbols[rows_j],
-            "preclosure_probability": preclosure_probabilities[
-                protein_indices[rows_i], protein_indices[rows_j]
-            ],
+            "preclosure_probability": (
+                preclosure_probabilities[
+                    protein_indices[rows_i], protein_indices[rows_j]
+                ]
+                if preclosure_probabilities is not None
+                else np.full(len(rows_i), np.nan)
+            ),
             "bayes_factor": np.full(len(rows_i), closure_factor),
             "closure_support_likelihood": np.full(
                 len(rows_i), closure_likelihood
@@ -2679,6 +2687,7 @@ def combine_edge_factors(
     graph_symbols: list[str],
     *,
     graph_metadata: pd.DataFrame | None = None,
+    physical_scaffold_anchor_scores: np.ndarray | None = None,
     audit_collector: dict[str, pd.DataFrame] | None = None,
     contribution_collector: dict[str, np.ndarray] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
@@ -2843,13 +2852,29 @@ def combine_edge_factors(
         handler = definition["normalization"]["handler"]
         if handler != "scaffold_triadic_closure":
             raise ValueError(f"unsupported derived edge handler: {handler}")
-        table, closure_summary = scaffold_triadic_closure_factors(
-            project,
-            graph_symbols,
-            preclosure_probabilities,
-            state,
-            graph_metadata=graph_metadata,
-        )
+        if physical_scaffold_anchor_scores is None:
+            table = pd.DataFrame(columns=[
+                "node_a", "node_b", "preclosure_probability", "bayes_factor",
+                "closure_support_likelihood", "supporting_scaffold_count",
+                "supporting_scaffolds", "anchor_probability_cutoff", "closure_rule",
+            ])
+            closure_summary = {
+                "status": "deferred_no_physical_anchor_matrix",
+                "pairs_with_non_neutral_closure_factor": 0,
+                "closure_rule": (
+                    "No closure was applied because this workflow did not supply "
+                    "an AlphaFold/AlphaPulldown-or-HuRI physical anchor matrix."
+                ),
+            }
+        else:
+            table, closure_summary = scaffold_triadic_closure_factors(
+                project,
+                graph_symbols,
+                physical_scaffold_anchor_scores,
+                state,
+                graph_metadata=graph_metadata,
+                preclosure_probabilities=preclosure_probabilities,
+            )
         left_index = table["node_a"].map(index).astype(int).to_numpy()
         right_index = table["node_b"].map(index).astype(int).to_numpy()
         values = table["bayes_factor"].to_numpy(float)
@@ -2951,8 +2976,9 @@ def combine_edge_factors(
             "factors below 1, and scores eligible no-record pairs as x=0 using the "
             "numerical BF floor. Out-of-scope pairs remain at BF=1. When both negative "
             "modes are off, missing sparse-table entries receive BF=1. "
-            "If enabled, scaffold closure is derived once from the pre-closure graph "
-            "and appended without recursive feedback or absence penalties."
+            "Scaffold closure is appended only when a separate physical anchor matrix "
+            "from AlphaFold/AlphaPulldown or reported-positive HuRI evidence is supplied; "
+            "the integrated cheap-edge graph cannot create closure anchors."
         ),
     }
     return matrix, summary

@@ -78,6 +78,11 @@ Outputs:
 - `round_NNN/cheap_scored_all.tsv`: one row per admissible candidate and its
   cheap-stage rank within that frontier path.
 
+The GUI's live frontier graph becomes available at this point. It shows up to
+the top 20 candidates connected to each current source. Selecting a candidate
+reveals every recorded factor, weight, weighted log-BF, current posterior,
+ontology labels, and a plain-language interpretation.
+
 ### 3. Select the cheap shortlist
 
 The engine retains the configured `cheap_top_n_per_frontier` candidates from
@@ -85,6 +90,13 @@ each current frontier path. If `always_include_receptor` is enabled, the
 receptor is appended when it did not make the numerical top N. All rejected
 rows remain in the audit with the reason `outside_top_n`; forced receptor rows
 are explicitly labeled.
+
+The cheap-evidence ledger treats scaffold closure as a special dynamic stream.
+It is recalculated from the persistent physical-result cache: accepted
+AlphaPulldown/AlphaFold scores above the configured anchor cutoff and
+reported-positive HuRI interactions are the only possible protein-scaffold
+anchors. The ledger records `physical_supporting_scaffolds` and
+`physical_anchor_sources`; nonphysical evidence cannot trigger closure.
 
 Outputs:
 
@@ -97,6 +109,13 @@ For each shortlisted protein-protein pair, the engine looks for a raw score
 with the exact configured protocol ID and metric. Cache hits are reused.
 Structurally inapplicable pairs require no prediction. Only unique cache misses
 are exported to the AlphaPulldown package.
+
+If HuRI substitution is enabled, a verified reported HuRI positive with
+positive stream weight is also structurally complete: the HuRI BF has already
+been included once in cheap evidence, the structural BF remains neutral, and
+the pair is not written to `pairs.tsv`. A HuRI nonreport or weak-negative factor
+never substitutes. The cache ledger records the explicit
+`substituted_by:huri_binary_interaction` status.
 
 Outputs:
 
@@ -117,6 +136,12 @@ python dynamic_search.py import `
 Partial imports are allowed. The run remains waiting until every required pair
 has a numeric result. Failed or missing predictions are never imputed as weak
 binding.
+
+While Slurm tasks run, the live frontier view polls each compact
+`predictions_with_good_interpae.csv`. Finished pairs change from pending to
+complete and display ipTM, structural BF, and a provisional combined posterior
+before the formal collection step. This is read-only and does not advance the
+state machine.
 
 ### 5. Integrate all edge evidence
 

@@ -87,9 +87,6 @@ DEFAULT_SIGNAL_RELAY_CLASSES = (
     "gtpase",
     "gtpase_regulator",
     "kinase_phosphatase_binding",
-    "second_messenger_binding",
-    "signaling_process",
-    "signaling_regulation",
     "second_messenger",
 )
 

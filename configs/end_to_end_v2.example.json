@@ -12,84 +12,84 @@
         "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.1,
         "preferred_tq_multiplier": 1.0
       },
       "pc_transcript": {
         "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.6,
         "preferred_tq_multiplier": 1.0
       },
       "kinase_activity": {
         "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.1,
         "preferred_tq_multiplier": 0.1
       },
       "phosphoprotein_response": {
         "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.1,
         "preferred_tq_multiplier": 0.1
       },
       "pka_ca_ko_phosphoprotein_response": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.1,
         "preferred_tq_multiplier": 0.1
       },
       "pka_cb_ko_phosphoprotein_response": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.05,
         "preferred_tq_multiplier": 0.1
       },
       "collecting_duct_proteome_ccd": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.1,
         "preferred_tq_multiplier": 1.0
       },
       "collecting_duct_proteome_omcd": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.1,
         "preferred_tq_multiplier": 1.0
       },
       "collecting_duct_proteome_imcd": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.1,
         "preferred_tq_multiplier": 1.0
       },
       "collecting_duct_rna_ccd": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.5,
         "preferred_tq_multiplier": 1.0
       },
       "collecting_duct_rna_omcd": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.5,
         "preferred_tq_multiplier": 1.0
       },
       "collecting_duct_rna_imcd": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
+        "tq_multiplier": 0.5,
         "preferred_tq_multiplier": 1.0
       }
     },
@@ -98,7 +98,7 @@
       "non_neutral_tolerance": 1e-12,
       "prior_probability": 0.5,
       "output_probability_cutoff": 0.5,
-      "penalize_unobserved": false,
+      "penalize_unobserved": true,
       "unobserved_bayes_factor": 0.5,
       "continuous_negative_evidence": false,
       "continuous_bayes_factor_floor": 1e-06
@@ -132,16 +132,16 @@
         "enabled": true,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
-        "preferred_tq_multiplier": 1.0,
+        "tq_multiplier": 0.5,
+        "preferred_tq_multiplier": 0.5,
         "parameters": {}
       },
       "hpa_high_confidence": {
         "enabled": false,
         "weight": 1.0,
         "continuous_negative_evidence": false,
-        "tq_multiplier": 1.0,
-        "preferred_tq_multiplier": 1.0,
+        "tq_multiplier": 0.5,
+        "preferred_tq_multiplier": 0.5,
         "parameters": {}
       },
       "omnipath_core": {
@@ -161,7 +161,7 @@
         "parameters": {}
       },
       "scaffold_triadic_closure": {
-        "enabled": false,
+        "enabled": true,
         "weight": 1.0,
         "parameters": {
           "anchor_probability_cutoff": 0.9,
@@ -179,9 +179,9 @@
     },
     "path": {
       "enabled": true,
-      "start": "Prkaca",
-      "target": "Aqp2",
-      "top_k": 25,
+      "start": "Aqp2",
+      "target": "Prkaca",
+      "top_k": 100,
       "max_hops": 6,
       "minimum_edge_probability": 0.5,
       "ontology_directionality_enabled": true,
@@ -201,9 +201,6 @@
         "gtpase",
         "gtpase_regulator",
         "kinase_phosphatase_binding",
-        "second_messenger_binding",
-        "signaling_process",
-        "signaling_regulation",
         "second_messenger"
       ]
     },
@@ -219,7 +216,7 @@
   },
   "backward_search": {
     "target": "Aqp2",
-    "receptor": "Avpr2",
+    "receptor": "Prkaca",
     "cheap_top_n_per_frontier": 20,
     "beam_width": 5,
     "maximum_depth": 6,
@@ -232,6 +229,7 @@
       "mapping_file": "data/edge_characterization/localization/hpa/v25.1/processed/mouse_human_hpa_mapping.tsv",
       "weight": 1.0,
       "positive_bayes_factor": 5.0,
+      "substitute_for_structural": true,
       "nonreported_scope": "neutral",
       "nonreported_bayes_factor": 0.9,
       "screened_genes_file": ""

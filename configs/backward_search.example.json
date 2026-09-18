@@ -1,7 +1,7 @@
 {
   "project_root": "..",
   "target": "Aqp2",
-  "receptor": "Avpr2",
+  "receptor": "Prkaca",
   "node_table": "data/node_selection/node_universe_combined_nonzero.tsv",
   "sequence_fasta": "data/backward_search/node_sequences.fasta",
   "symbol_column": "symbol",
@@ -35,6 +35,7 @@
     "mapping_file": "data/edge_characterization/localization/hpa/v25.1/processed/mouse_human_hpa_mapping.tsv",
     "weight": 1.0,
     "positive_bayes_factor": 5.0,
+    "substitute_for_structural": true,
     "nonreported_scope": "neutral",
     "nonreported_bayes_factor": 0.9,
     "screened_genes_file": ""
